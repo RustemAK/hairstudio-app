@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>HairStudio — Запись клиентов и Учет</title>
+
+  <!-- PWA & Mobile Web App Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0e17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HairStudio">
+  <link rel="apple-touch-icon" href="icons/icon-512.jpg">
+
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="brand-wrapper">
+      <div class="brand-icon-wrapper">
+        <img src="icons/icon-512.jpg" alt="HairStudio Logo">
+      </div>
+      <div>
+        <div class="brand-title">
+          HairStudio <span class="brand-badge">PRO</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="btnSettings" class="btn-icon" title="Настройки и бэкап" aria-label="Настройки">
+        ⚙️
+      </button>
+    </div>
+  </header>
+
+  <!-- Quick Daily Banner -->
+  <div class="daily-banner">
+    <div class="banner-left">
+      <div class="banner-title">СЕГОДНЯ</div>
+      <div id="bannerTodayDate" class="banner-date">...</div>
+    </div>
+    <div class="banner-stats">
+      <div class="banner-stat-item">
+        <div class="banner-stat-label">Записей</div>
+        <div id="bannerTodayCount" class="banner-stat-value">0</div>
+      </div>
+      <div class="banner-stat-item">
+        <div class="banner-stat-label">Выручка</div>
+        <div id="bannerTodayRevenue" class="banner-stat-value">0 ₽</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Scrollable Content Area -->
+  <main class="main-content">
+
+    <!-- TAB 1: SCHEDULE (КАЛЕНДАРЬ) -->
+    <section id="tab-schedule" class="tab-screen active">
+      <!-- Date Strip -->
+      <div id="dateStrip" class="date-strip-container">
+        <!-- Generated dynamically via JS -->
+      </div>
+
+      <!-- Schedule Filter -->
+      <div class="chips-filter" id="appointmentStatusFilter">
+        <button class="chip-btn active" data-filter="all">Все записи</button>
+        <button class="chip-btn" data-filter="scheduled">Запланированы</button>
+        <button class="chip-btn" data-filter="completed">Выполнены</button>
+      </div>
+
+      <!-- Appointments List -->
+      <div id="appointmentsList" class="appointments-list">
+        <!-- Rendered via JS -->
+      </div>
+    </section>
+
+    <!-- TAB 2: CLIENTS (КЛИЕНТЫ) -->
+    <section id="tab-clients" class="tab-screen">
+      <div class="form-group" style="margin-bottom: 12px;">
+        <input type="text" id="clientSearchInput" class="form-input" placeholder="🔍 Поиск по имени или телефону...">
+      </div>
+      <div id="clientsList" class="data-list">
+        <!-- Rendered via JS -->
+      </div>
+    </section>
+
+    <!-- TAB 3: SERVICES (УСЛУГИ И ПРАЙС) -->
+    <section id="tab-services" class="tab-screen">
+      <div class="chips-filter" id="serviceCategoryFilter">
+        <button class="chip-btn active" data-category="all">Все</button>
+        <button class="chip-btn" data-category="Стрижки">Стрижки</button>
+        <button class="chip-btn" data-category="Окрашивание">Окрашивание</button>
+        <button class="chip-btn" data-category="Уход">Уход</button>
+        <button class="chip-btn" data-category="Укладка">Укладка</button>
+      </div>
+      <div id="servicesList" class="data-list">
+        <!-- Rendered via JS -->
+      </div>
+    </section>
+
+    <!-- TAB 4: EXPENSES & MATERIALS (РАСХОДНИКИ И ЗАКУПКИ) -->
+    <section id="tab-expenses" class="tab-screen">
+      <div class="stat-card" style="margin-bottom: 12px; background: linear-gradient(135deg, rgba(244, 63, 94, 0.12) 0%, rgba(17, 24, 39, 0.8) 100%); border-color: rgba(244, 63, 94, 0.3);">
+        <div class="stat-card-title">Расходы на материалы за месяц</div>
+        <div id="expensesMonthTotal" class="stat-card-value expense">0 ₽</div>
+        <div class="stat-card-sub">Краска, оксиды, расходники и аренда</div>
+      </div>
+
+      <div class="chips-filter" id="expenseCategoryFilter">
+        <button class="chip-btn active" data-category="all">Все</button>
+        <button class="chip-btn" data-category="Красители">Красители</button>
+        <button class="chip-btn" data-category="Расходники">Расходники</button>
+        <button class="chip-btn" data-category="Уход/Косметика">Уход/Косметика</button>
+        <button class="chip-btn" data-category="Аренда/Оборудование">Аренда</button>
+      </div>
+      <div id="expensesList" class="data-list">
+        <!-- Rendered via JS -->
+      </div>
+    </section>
+
+    <!-- TAB 5: FINANCE & ANALYTICS (ФИНАНСЫ И ЧИСТАЯ ПРИБЫЛЬ) -->
+    <section id="tab-finance" class="tab-screen">
+      <div class="period-selector" id="financePeriodSelector">
+        <button class="period-btn" data-period="today">Сегодня</button>
+        <button class="period-btn" data-period="week">Неделя</button>
+        <button class="period-btn active" data-period="month">Месяц</button>
+        <button class="period-btn" data-period="all">Всё время</button>
+      </div>
+
+      <div class="stats-grid">
+        <!-- Net Profit Card -->
+        <div class="stat-card full-width">
+          <div class="stat-card-title">💎 ЧИСТАЯ ПРИБЫЛЬ (Выручка - Расходы)</div>
+          <div id="statNetProfit" class="stat-card-value profit">0 ₽</div>
+          <div class="stat-card-sub" id="statNetProfitSub">Ваш реальный чистый доход за выбранный период</div>
+        </div>
+
+        <!-- Revenue Card -->
+        <div class="stat-card">
+          <div class="stat-card-title">📈 Выручка (Услуги)</div>
+          <div id="statTotalRevenue" class="stat-card-value">0 ₽</div>
+          <div class="stat-card-sub" id="statAppointmentsCount">0 записей</div>
+        </div>
+
+        <!-- Expenses Card -->
+        <div class="stat-card">
+          <div class="stat-card-title">📉 Закупки и расходы</div>
+          <div id="statTotalExpenses" class="stat-card-value expense">0 ₽</div>
+          <div class="stat-card-sub" id="statExpensesCount">0 закупок</div>
+        </div>
+
+        <!-- Average Check -->
+        <div class="stat-card">
+          <div class="stat-card-title">🏷️ Средний чек</div>
+          <div id="statAvgCheck" class="stat-card-value">0 ₽</div>
+          <div class="stat-card-sub">На одного клиента</div>
+        </div>
+
+        <!-- Efficiency -->
+        <div class="stat-card">
+          <div class="stat-card-title">📊 Рентабельность</div>
+          <div id="statMargin" class="stat-card-value">0%</div>
+          <div class="stat-card-sub">Доля чистой прибыли</div>
+        </div>
+      </div>
+
+      <!-- Top Services Breakdown -->
+      <div class="stat-card" style="margin-top: 12px;">
+        <div class="stat-card-title">🔥 ТОП ПОПУЛЯРНЫХ УСЛУГ</div>
+        <div id="topServicesContainer" style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Floating Action Button (FAB) -->
+  <button id="btnFab" class="fab-button" aria-label="Добавить">
+    +
+  </button>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-tab="schedule">
+      <span class="nav-icon">📅</span>
+      <span>Расписание</span>
+    </button>
+    <button class="nav-item" data-tab="clients">
+      <span class="nav-icon">👥</span>
+      <span>Клиенты</span>
+    </button>
+    <button class="nav-item" data-tab="services">
+      <span class="nav-icon">✂️</span>
+      <span>Услуги</span>
+    </button>
+    <button class="nav-item" data-tab="expenses">
+      <span class="nav-icon">📦</span>
+      <span>Материалы</span>
+    </button>
+    <button class="nav-item" data-tab="finance">
+      <span class="nav-icon">📊</span>
+      <span>Финансы</span>
+    </button>
+  </nav>
+
+  <!-- ================= MODALS ================= -->
+
+  <!-- Modal 1: Appointment Form (Запись клиента) -->
+  <div id="modalAppointment" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 id="modalAppointmentTitle" class="modal-title">Новая запись</h3>
+        <button class="modal-close" data-close="modalAppointment">✕</button>
+      </div>
+      <form id="formAppointment" class="modal-body">
+        <input type="hidden" id="appId">
+
+        <div class="form-group">
+          <label class="form-label">Имя клиента *</label>
+          <input type="text" id="appClientName" class="form-input" placeholder="Например: Анна Смирнова" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Номер телефона</label>
+          <input type="tel" id="appClientPhone" class="form-input" placeholder="+7 999 123-45-67">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Дата *</label>
+            <input type="date" id="appDate" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Время начала *</label>
+            <input type="time" id="appStartTime" class="form-input" value="10:00" required>
+          </div>
+        </div>
+
+        <!-- Services Multi-Select List -->
+        <div class="form-group">
+          <label class="form-label">Выберите услуги * (можно несколько)</label>
+          <div id="appServicesSelector" class="service-select-box">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Итоговая цена (₽) *</label>
+            <input type="number" id="appTotalPrice" class="form-input" min="0" step="50" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Время окончания</label>
+            <input type="time" id="appEndTime" class="form-input" value="11:00">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Израсходованные материалы (краска, оксид и др.)</label>
+          <input type="text" id="appMaterialsUsed" class="form-input" placeholder="Например: Matrix 6N (40г) + оксид 6% (40г)">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Формула окрашивания / Заметки мастера</label>
+          <textarea id="appNotes" class="form-textarea" placeholder="Особенности волос, прошлая формула, пожелания..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Статус записи</label>
+          <select id="appStatus" class="form-select">
+            <option value="scheduled">🟡 Запланировано</option>
+            <option value="completed">🟢 Выполнено и оплачено</option>
+            <option value="cancelled">🔴 Отменено</option>
+          </select>
+        </div>
+
+        <div class="modal-footer" style="padding: 10px 0 0;">
+          <button type="button" id="btnDeleteAppointment" class="btn-danger" style="display: none;">Удалить</button>
+          <button type="submit" class="btn-primary">Сохранить запись</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Service Form (Услуга) -->
+  <div id="modalService" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 id="modalServiceTitle" class="modal-title">Новая услуга</h3>
+        <button class="modal-close" data-close="modalService">✕</button>
+      </div>
+      <form id="formService" class="modal-body">
+        <input type="hidden" id="serviceId">
+
+        <div class="form-group">
+          <label class="form-label">Название услуги *</label>
+          <input type="text" id="serviceName" class="form-input" placeholder="Например: Стрижка женская" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Категория *</label>
+          <select id="serviceCategory" class="form-select" required>
+            <option value="Стрижки">Стрижки</option>
+            <option value="Окрашивание">Окрашивание</option>
+            <option value="Уход">Уход и лечение</option>
+            <option value="Укладка">Укладка</option>
+            <option value="Другое">Другое</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Цена (₽) *</label>
+            <input type="number" id="servicePrice" class="form-input" min="0" step="50" placeholder="1500" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Длительность (мин) *</label>
+            <input type="number" id="serviceDuration" class="form-input" min="5" step="5" value="60" required>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 10px 0 0;">
+          <button type="button" id="btnDeleteService" class="btn-danger" style="display: none;">Удалить</button>
+          <button type="submit" class="btn-primary">Сохранить услугу</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Expense / Material Form (Расход) -->
+  <div id="modalExpense" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 id="modalExpenseTitle" class="modal-title">Новая закупка материалов</h3>
+        <button class="modal-close" data-close="modalExpense">✕</button>
+      </div>
+      <form id="formExpense" class="modal-body">
+        <input type="hidden" id="expenseId">
+
+        <div class="form-group">
+          <label class="form-label">Что куплено *</label>
+          <input type="text" id="expenseTitle" class="form-input" placeholder="Например: Краска Matrix 10 шт, фольга, перчатки" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Категория *</label>
+          <select id="expenseCategory" class="form-select" required>
+            <option value="Красители">Красители и оксиданты</option>
+            <option value="Расходники">Расходники (перчатки, фольга, воротнички)</option>
+            <option value="Уход/Косметика">Шампуни, маски, стайлинг</option>
+            <option value="Аренда/Оборудование">Аренда кресла / инструменты</option>
+            <option value="Прочее">Прочее</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Сумма (₽) *</label>
+            <input type="number" id="expenseAmount" class="form-input" min="0" step="10" placeholder="2500" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Количество / Объем</label>
+            <input type="text" id="expenseQuantity" class="form-input" placeholder="5 шт / 1000 мл">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Дата закупки *</label>
+          <input type="date" id="expenseDate" class="form-input" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Заметка к покупке</label>
+          <input type="text" id="expenseNotes" class="form-input" placeholder="Номера тонов, магазин, артикул...">
+        </div>
+
+        <div class="modal-footer" style="padding: 10px 0 0;">
+          <button type="button" id="btnDeleteExpense" class="btn-danger" style="display: none;">Удалить</button>
+          <button type="submit" class="btn-primary">Сохранить закупку</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 4: Client Details Modal (Карточка клиента) -->
+  <div id="modalClientDetails" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 id="clientDetailsName" class="modal-title">Карточка клиента</h3>
+        <button class="modal-close" data-close="modalClientDetails">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-input); padding: 12px; border-radius: var(--radius-md);">
+          <div>
+            <div id="clientDetailsPhone" style="font-size: 15px; font-weight: 600; color: var(--text-main);">+7 ...</div>
+            <div id="clientDetailsVisitsCount" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">0 визитов</div>
+          </div>
+          <div class="quick-actions" id="clientDetailsActions">
+            <!-- Call / Whatsapp buttons -->
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Формулы окрашивания и заметки по клиенту</label>
+          <textarea id="clientDetailsNotes" class="form-textarea" placeholder="Заметки о клиенте, аллергии, формулы краски..."></textarea>
+          <button id="btnSaveClientNotes" class="btn-secondary" style="margin-top: 6px;">Сохранить формулу</button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">История визитов клиента</label>
+          <div id="clientVisitHistory" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 5: Settings & Backup (Настройки и бэкап) -->
+  <div id="modalSettings" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 class="modal-title">Настройки и Резервные копии</h3>
+        <button class="modal-close" data-close="modalSettings">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px;">
+          <h4 style="color: var(--accent-gold-light); font-size: 14px; margin-bottom: 4px;">📲 Установка на iPhone / Android</h4>
+          <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+            <strong>На iPhone:</strong> Откройте сайт в Safari, нажмите кнопку «Поделиться» (иконка квадрата со стрелкой) и выберите <strong>«На экран "Домой"»</strong>.<br>
+            <strong>На Android:</strong> Откройте в Chrome, нажмите три точки и выберите <strong>«Установить приложение»</strong>.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Резервное копирование (Backup)</label>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Сохраните все свои записи, услуги, расходы и клиентов в один файл на телефон.
+          </p>
+          <button id="btnExportBackup" class="btn-secondary">💾 Скачать резервную копию (JSON)</button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Восстановление из резервной копии</label>
+          <input type="file" id="importFileInput" accept=".json" style="display: none;">
+          <button id="btnImportBackup" class="btn-secondary">📂 Загрузить файл резервной копии</button>
+        </div>
+
+        <div class="form-group" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+          <label class="form-label" style="color: var(--status-cancelled);">Сброс данных</label>
+          <button id="btnResetDemo" class="btn-danger">Сбросить к демонстрационным данным</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/db.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
