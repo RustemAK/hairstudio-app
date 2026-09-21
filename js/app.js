@@ -159,6 +159,20 @@ function setupEventListeners() {
     });
   }
 
+  // Appointment service dropdown listener
+  const addServiceSelect = document.getElementById('appAddServiceSelect');
+  if (addServiceSelect) {
+    addServiceSelect.addEventListener('change', (e) => {
+      const serviceId = Number(e.target.value);
+      if (serviceId) {
+        state.selectedServicesForAppointment.add(serviceId);
+        renderSelectedServicesInModal();
+        recalcAppointmentForm();
+        e.target.value = '';
+      }
+    });
+  }
+
   // Appointment client mode listeners
   document.getElementById('btnClientModeExisting').addEventListener('click', () => setClientMode('existing'));
   document.getElementById('btnClientModeNew').addEventListener('click', () => setClientMode('new'));
@@ -533,7 +547,6 @@ function openAppointmentModal(app = null, preselectedClient = null, defaultStart
 
   const modalTitle = document.getElementById('modalAppointmentTitle');
   const btnDelete = document.getElementById('btnDeleteAppointment');
-  const servicesBox = document.getElementById('appServicesSelector');
 
   modalTitle.innerText = app ? 'Редактирование записи' : 'Новая запись';
   btnDelete.style.display = app ? 'block' : 'none';
@@ -554,38 +567,44 @@ function openAppointmentModal(app = null, preselectedClient = null, defaultStart
     });
   }
 
-  // Fill services selector
-  servicesBox.innerHTML = '';
-  state.services.forEach(s => {
-    const isSelected = app && (app.services || []).some(as => as.name === s.name);
-    if (isSelected) {
-      state.selectedServicesForAppointment.add(s.id);
-    }
-
-    const item = document.createElement('div');
-    item.className = `service-select-item ${isSelected ? 'selected' : ''}`;
-    item.dataset.id = s.id;
-    item.innerHTML = `
-      <div>
-        <div style="font-weight: 600; font-size: 14px;">${s.name}</div>
-        <div style="font-size: 12px; color: var(--text-muted);">${s.category} • ${s.duration} мин</div>
-      </div>
-      <div style="font-weight: 700; color: var(--accent-gold-light);">${s.price} ₸</div>
-    `;
-
-    item.addEventListener('click', () => {
-      if (state.selectedServicesForAppointment.has(s.id)) {
-        state.selectedServicesForAppointment.delete(s.id);
-        item.classList.remove('selected');
-      } else {
-        state.selectedServicesForAppointment.add(s.id);
-        item.classList.add('selected');
-      }
-      recalcAppointmentForm();
+  // Fill services dropdown with optgroups
+  const addServiceSelect = document.getElementById('appAddServiceSelect');
+  if (addServiceSelect) {
+    addServiceSelect.innerHTML = '<option value="">➕ Выберите услугу для добавления...</option>';
+    
+    // Group services by category
+    const categories = {};
+    state.services.forEach(s => {
+      const cat = s.category || 'Другое';
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push(s);
     });
 
-    servicesBox.appendChild(item);
-  });
+    Object.keys(categories).sort().forEach(cat => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = cat;
+      categories[cat].forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name} — ${Number(s.price).toLocaleString('ru-RU')} ₸ (${s.duration} мин)`;
+        optgroup.appendChild(opt);
+      });
+      addServiceSelect.appendChild(optgroup);
+    });
+  }
+
+  // If editing existing appointment, pre-select its services
+  if (app && app.services) {
+    app.services.forEach(as => {
+      const matched = state.services.find(s => s.name === as.name);
+      if (matched) {
+        state.selectedServicesForAppointment.add(matched.id);
+      }
+    });
+  }
+
+  // Render selected chips
+  renderSelectedServicesInModal();
 
   if (app) {
     document.getElementById('appId').value = app.id;
@@ -1303,4 +1322,46 @@ function copyClientFormulaToNotes() {
     notesField.value = formulaText;
   }
   showToast('Формула окрашивания скопирована в заметку');
+}
+
+
+function renderSelectedServicesInModal() {
+  const container = document.getElementById('appSelectedServicesContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (state.selectedServicesForAppointment.size === 0) {
+    container.innerHTML = `
+      <div class="empty-services-hint">
+        Услуги пока не выбраны (выберите из выпадающего списка выше)
+      </div>
+    `;
+    return;
+  }
+
+  state.selectedServicesForAppointment.forEach(id => {
+    const s = state.services.find(item => item.id === id);
+    if (!s) return;
+
+    const chip = document.createElement('div');
+    chip.className = 'selected-service-chip';
+    chip.innerHTML = `
+      <div class="chip-service-info">
+        <span class="chip-service-name">${s.name}</span>
+        <span class="chip-service-meta">${s.category} • ${s.duration} мин</span>
+      </div>
+      <div class="chip-service-right">
+        <span class="chip-service-price">${Number(s.price).toLocaleString('ru-RU')} ₸</span>
+        <button type="button" class="btn-remove-service" data-id="${s.id}" title="Удалить услугу">✕</button>
+      </div>
+    `;
+
+    chip.querySelector('.btn-remove-service').addEventListener('click', () => {
+      state.selectedServicesForAppointment.delete(s.id);
+      renderSelectedServicesInModal();
+      recalcAppointmentForm();
+    });
+
+    container.appendChild(chip);
+  });
 }

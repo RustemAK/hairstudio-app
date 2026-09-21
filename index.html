@@ -313,11 +313,14 @@
           </div>
         </div>
 
-        <!-- Services Multi-Select List -->
+        <!-- Services Dropdown & Selected Chips -->
         <div class="form-group">
-          <label class="form-label">Выберите услуги * (можно несколько)</label>
-          <div id="appServicesSelector" class="service-select-box">
-            <!-- Rendered via JS -->
+          <label class="form-label">Услуги * (можно выбрать несколько)</label>
+          <select id="appAddServiceSelect" class="form-select">
+            <option value="">➕ Выберите услугу для добавления...</option>
+          </select>
+          <div id="appSelectedServicesContainer" class="selected-services-box" style="margin-top: 8px;">
+            <!-- Rendered via JS: selected service chips -->
           </div>
         </div>
 
