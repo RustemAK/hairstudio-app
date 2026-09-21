@@ -1137,33 +1137,16 @@ body {
   margin-bottom: 0;
 }
 
-/* Quick Complete Button */
-.card-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Quick Complete Button in quick-actions */
+.btn-action-small.complete {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
 }
 
-.btn-quick-complete {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(16, 185, 129, 0.14);
-  border: 1px solid rgba(16, 185, 129, 0.45);
-  color: #34d399;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: var(--transition-fast);
-  white-space: nowrap;
-}
-
-.btn-quick-complete:hover, .btn-quick-complete:active {
+.btn-action-small.complete:hover,
+.btn-action-small.complete:active {
   background: #10b981;
   color: #ffffff;
-  border-color: #10b981;
   box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
-  transform: translateY(-1px);
 }

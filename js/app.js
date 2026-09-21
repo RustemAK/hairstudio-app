@@ -400,22 +400,20 @@ function renderSchedule() {
 
       <div class="card-footer">
         <div class="price-tag">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</div>
-        <div class="card-footer-actions">
+        <div class="quick-actions">
           ${app.status === 'scheduled' ? `
-            <button class="btn-quick-complete" title="Завершить и отметить оплаченным в 1 клик">
-              ✓ Завершить
+            <button class="btn-action-small complete btn-complete-app" title="Отметить выполненным" aria-label="Завершить запись">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </button>
           ` : ''}
-          <div class="quick-actions">
-            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
-            ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
-            <button class="btn-action-small btn-edit-app" title="Редактировать">✏️</button>
-          </div>
+          ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
+          ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
+          <button class="btn-action-small btn-edit-app" title="Редактировать">✏️</button>
         </div>
       </div>
     `;
 
-    const btnComplete = card.querySelector('.btn-quick-complete');
+    const btnComplete = card.querySelector('.btn-complete-app');
     if (btnComplete) {
       btnComplete.addEventListener('click', async (e) => {
         e.stopPropagation();
