@@ -400,13 +400,32 @@ function renderSchedule() {
 
       <div class="card-footer">
         <div class="price-tag">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</div>
-        <div class="quick-actions">
-          ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
-          ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
-          <button class="btn-action-small btn-edit-app" title="Редактировать">✏️</button>
+        <div class="card-footer-actions">
+          ${app.status === 'scheduled' ? `
+            <button class="btn-quick-complete" title="Завершить и отметить оплаченным в 1 клик">
+              ✓ Завершить
+            </button>
+          ` : ''}
+          <div class="quick-actions">
+            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
+            ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
+            <button class="btn-action-small btn-edit-app" title="Редактировать">✏️</button>
+          </div>
         </div>
       </div>
     `;
+
+    const btnComplete = card.querySelector('.btn-quick-complete');
+    if (btnComplete) {
+      btnComplete.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        app.status = 'completed';
+        app.updatedAt = new Date().toISOString();
+        await window.db.updateAppointment(app);
+        showToast(`Запись «${app.clientName}» выполнена и оплачена!`);
+        await reloadData();
+      });
+    }
 
     card.querySelector('.btn-edit-app').addEventListener('click', (e) => {
       e.stopPropagation();
