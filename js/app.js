@@ -278,7 +278,7 @@ function renderTodayBanner() {
   const revenue = completedToday.reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
 
   document.getElementById('bannerTodayCount').innerText = todayApps.length;
-  document.getElementById('bannerTodayRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₽`;
+  document.getElementById('bannerTodayRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
 }
 
 // ================= DATE STRIP (CALENDAR) =================
@@ -359,7 +359,7 @@ function renderSchedule() {
 
     // Services tags HTML
     const servicesHtml = (app.services || []).map(s => `
-      <span class="service-tag">${s.name} (${s.price} ₽)</span>
+      <span class="service-tag">${s.name} (${s.price} ₸)</span>
     `).join('');
 
     // Phone actions
@@ -399,7 +399,7 @@ function renderSchedule() {
       ` : ''}
 
       <div class="card-footer">
-        <div class="price-tag">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₽</div>
+        <div class="price-tag">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</div>
         <div class="quick-actions">
           ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
           ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
@@ -553,7 +553,7 @@ function openAppointmentModal(app = null, preselectedClient = null, defaultStart
         <div style="font-weight: 600; font-size: 14px;">${s.name}</div>
         <div style="font-size: 12px; color: var(--text-muted);">${s.category} • ${s.duration} мин</div>
       </div>
-      <div style="font-weight: 700; color: var(--accent-gold-light);">${s.price} ₽</div>
+      <div style="font-weight: 700; color: var(--accent-gold-light);">${s.price} ₸</div>
     `;
 
     item.addEventListener('click', () => {
@@ -762,7 +762,7 @@ function renderServices() {
         </div>
       </div>
       <div class="item-right">
-        <div class="item-price">${(Number(s.price) || 0).toLocaleString('ru-RU')} ₽</div>
+        <div class="item-price">${(Number(s.price) || 0).toLocaleString('ru-RU')} ₸</div>
         <button class="btn-action-small btn-edit-service" title="Редактировать">✏️</button>
       </div>
     `;
@@ -839,7 +839,7 @@ function renderExpenses() {
   const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const monthExpenses = state.expenses.filter(e => (e.date || '').startsWith(currentMonthPrefix));
   const monthTotal = monthExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  document.getElementById('expensesMonthTotal').innerText = `${monthTotal.toLocaleString('ru-RU')} ₽`;
+  document.getElementById('expensesMonthTotal').innerText = `${monthTotal.toLocaleString('ru-RU')} ₸`;
 
   let list = state.expenses;
   if (state.expenseCategory !== 'all') {
@@ -873,7 +873,7 @@ function renderExpenses() {
         ${exp.notes ? `<div style="font-size: 11px; color: var(--text-subtle); margin-top: 2px;">${exp.notes}</div>` : ''}
       </div>
       <div class="item-right">
-        <div class="item-price expense">-${(Number(exp.amount) || 0).toLocaleString('ru-RU')} ₽</div>
+        <div class="item-price expense">-${(Number(exp.amount) || 0).toLocaleString('ru-RU')} ₸</div>
         <button class="btn-action-small btn-edit-exp" title="Редактировать">✏️</button>
       </div>
     `;
@@ -991,7 +991,7 @@ function renderClients(searchQuery = '') {
         <div class="item-meta">
           <span>📞 ${c.phone || 'без телефона'}</span>
           <span>📅 ${clientApps.length} визит(ов)</span>
-          <span>💰 ${totalSpent.toLocaleString('ru-RU')} ₽</span>
+          <span>💰 ${totalSpent.toLocaleString('ru-RU')} ₸</span>
         </div>
         ${c.notes ? `<div style="font-size: 11px; color: var(--accent-gold-light); margin-top: 2px;">🎨 ${c.notes}</div>` : ''}
       </div>
@@ -1016,7 +1016,7 @@ function openClientDetailsModal(client, clientApps) {
   state.viewingClientId = client.id;
   document.getElementById('clientDetailsName').innerText = client.name;
   document.getElementById('clientDetailsPhone').innerText = client.phone || 'Телефон не указан';
-  document.getElementById('clientDetailsVisitsCount').innerText = `${clientApps.length} визит(ов) • Всего: ${clientApps.filter(a => a.status === 'completed').reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0).toLocaleString('ru-RU')} ₽`;
+  document.getElementById('clientDetailsVisitsCount').innerText = `${clientApps.length} визит(ов) • Всего: ${clientApps.filter(a => a.status === 'completed').reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0).toLocaleString('ru-RU')} ₸`;
   document.getElementById('clientDetailsNotes').value = client.notes || '';
 
   // Actions
@@ -1040,7 +1040,7 @@ function openClientDetailsModal(client, clientApps) {
       item.innerHTML = `
         <div style="display: flex; justify-content: space-between; font-weight: 600;">
           <span>${formatDisplayDate(a.date)} ${a.startTime}</span>
-          <span style="color: var(--accent-gold-light);">${(Number(a.totalPrice) || 0).toLocaleString('ru-RU')} ₽</span>
+          <span style="color: var(--accent-gold-light);">${(Number(a.totalPrice) || 0).toLocaleString('ru-RU')} ₸</span>
         </div>
         <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
           ${(a.services || []).map(s => s.name).join(', ')}
@@ -1114,16 +1114,16 @@ function renderFinance() {
 
   // DOM Updates
   const profitElem = document.getElementById('statNetProfit');
-  profitElem.innerText = `${netProfit.toLocaleString('ru-RU')} ₽`;
+  profitElem.innerText = `${netProfit.toLocaleString('ru-RU')} ₸`;
   profitElem.className = `stat-card-value ${netProfit >= 0 ? 'profit' : 'expense'}`;
 
-  document.getElementById('statTotalRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₽`;
+  document.getElementById('statTotalRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
   document.getElementById('statAppointmentsCount').innerText = `${completedApps.length} вып. записей`;
 
-  document.getElementById('statTotalExpenses').innerText = `${expensesTotal.toLocaleString('ru-RU')} ₽`;
+  document.getElementById('statTotalExpenses').innerText = `${expensesTotal.toLocaleString('ru-RU')} ₸`;
   document.getElementById('statExpensesCount').innerText = `${filteredExpenses.length} закупок`;
 
-  document.getElementById('statAvgCheck').innerText = `${avgCheck.toLocaleString('ru-RU')} ₽`;
+  document.getElementById('statAvgCheck').innerText = `${avgCheck.toLocaleString('ru-RU')} ₸`;
   document.getElementById('statMargin').innerText = `${margin}%`;
 
   // Top Services Breakdown
@@ -1156,7 +1156,7 @@ function renderFinance() {
           <div style="font-weight: 600; color: var(--text-main);">${name}</div>
           <div style="font-size: 11px; color: var(--text-muted);">${data.count} раз(а)</div>
         </div>
-        <div style="font-weight: 700; color: var(--accent-gold-light);">${data.revenue.toLocaleString('ru-RU')} ₽</div>
+        <div style="font-weight: 700; color: var(--accent-gold-light);">${data.revenue.toLocaleString('ru-RU')} ₸</div>
       `;
       topServicesBox.appendChild(row);
     });
