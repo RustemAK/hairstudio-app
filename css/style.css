@@ -977,3 +977,162 @@ body {
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* Client Mode Selector in Appointment Modal */
+.client-mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.client-mode-toggle .chip-btn {
+  flex: 1;
+  text-align: center;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.client-mode-toggle .chip-btn.active {
+  background: var(--accent-gold-gradient);
+  color: #0b0f19;
+  border-color: var(--accent-gold-light);
+  font-weight: 700;
+}
+
+.client-card-preview {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: rgba(212, 163, 89, 0.08);
+  border: 1px solid rgba(212, 163, 89, 0.25);
+  border-radius: var(--radius-md);
+  animation: fadeIn 0.2s ease;
+}
+
+.client-formula-box {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--accent-gold);
+}
+
+/* Schedule Mobile Toolbar */
+.schedule-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.toolbar-item {
+  position: relative;
+}
+
+.schedule-dropdown {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-fast);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+
+.schedule-dropdown:focus {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 2px rgba(212, 163, 89, 0.15);
+}
+
+/* Hourly Timeline Schedule */
+.timeline-container {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  position: relative;
+}
+
+.timeline-hour-row {
+  display: flex;
+  min-height: 74px;
+  position: relative;
+}
+
+.timeline-time-col {
+  width: 46px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding-top: 2px;
+  text-align: right;
+  padding-right: 12px;
+  position: relative;
+}
+
+.timeline-time-col::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 2px solid var(--accent-gold);
+  z-index: 2;
+}
+
+.timeline-content-col {
+  flex: 1;
+  padding-left: 10px;
+  padding-bottom: 12px;
+  border-left: 2px solid rgba(212, 163, 89, 0.22);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline-empty-slot {
+  height: 100%;
+  min-height: 52px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.timeline-empty-slot:hover, .timeline-empty-slot:active {
+  background: rgba(212, 163, 89, 0.08);
+  border-color: var(--accent-gold);
+  color: var(--accent-gold-light);
+}
+
+.timeline-empty-slot .empty-slot-plus {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-gold);
+}
+
+.timeline-hour-row .appointment-card {
+  margin-bottom: 0;
+}

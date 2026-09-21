@@ -19,7 +19,9 @@ const state = {
   editingAppointmentId: null,
   editingServiceId: null,
   editingExpenseId: null,
-  viewingClientId: null
+  viewingClientId: null,
+  appointmentClientMode: 'existing',
+  scheduleViewMode: 'timeline'
 };
 
 // ================= DATE HELPERS =================
@@ -140,6 +142,40 @@ function setupEventListeners() {
     });
   });
 
+  // Schedule Toolbar listeners (Dropdowns)
+  const statusFilterSelect = document.getElementById('appointmentStatusFilter');
+  if (statusFilterSelect) {
+    statusFilterSelect.addEventListener('change', (e) => {
+      state.scheduleFilter = e.target.value;
+      renderSchedule();
+    });
+  }
+
+  const viewSelect = document.getElementById('scheduleViewSelect');
+  if (viewSelect) {
+    viewSelect.addEventListener('change', (e) => {
+      state.scheduleViewMode = e.target.value;
+      renderSchedule();
+    });
+  }
+
+  // Appointment client mode listeners
+  document.getElementById('btnClientModeExisting').addEventListener('click', () => setClientMode('existing'));
+  document.getElementById('btnClientModeNew').addEventListener('click', () => setClientMode('new'));
+  document.getElementById('appExistingClientSelect').addEventListener('change', updateClientSelectionFromDropdown);
+  document.getElementById('btnCopyClientFormula').addEventListener('click', copyClientFormulaToNotes);
+
+  const btnBookClient = document.getElementById('btnBookThisClient');
+  if (btnBookClient) {
+    btnBookClient.addEventListener('click', () => {
+      const client = state.clients.find(c => c.id === state.viewingClientId);
+      closeModal('modalClientDetails');
+      if (client) {
+        openAppointmentModal(null, client);
+      }
+    });
+  }
+
   // FAB button
   const fab = document.getElementById('btnFab');
   fab.addEventListener('click', () => {
@@ -159,15 +195,7 @@ function setupEventListeners() {
     openModal('modalSettings');
   });
 
-  // Schedule status filter
-  document.querySelectorAll('#appointmentStatusFilter .chip-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#appointmentStatusFilter .chip-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.scheduleFilter = btn.getAttribute('data-filter');
-      renderSchedule();
-    });
-  });
+  // Status filter handled via schedule-dropdown
 
   // Service category filter
   document.querySelectorAll('#serviceCategoryFilter .chip-btn').forEach(btn => {
@@ -318,20 +346,8 @@ function renderSchedule() {
   // Sort by start time
   dayApps.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
-  if (dayApps.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">✂️</div>
-        <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px; color: var(--text-main);">
-          На этот день записей нет
-        </div>
-        <div>Нажмите кнопку «+», чтобы записать клиента на ${formatDisplayDate(state.selectedDate)}</div>
-      </div>
-    `;
-    return;
-  }
-
-  dayApps.forEach(app => {
+  // HELPER TO CREATE APPOINTMENT CARD ELEMENT
+  function createAppointmentCard(app) {
     const card = document.createElement('div');
     card.className = `appointment-card status-${app.status}`;
 
@@ -377,7 +393,7 @@ function renderSchedule() {
       ` : ''}
 
       ${app.notes ? `
-        <div style="font-size: 12px; color: var(--text-muted); font-style: italic;">
+        <div class="materials-note" style="border-left-color: var(--accent-gold); margin-top: 4px;">
           📝 ${app.notes}
         </div>
       ` : ''}
@@ -392,15 +408,109 @@ function renderSchedule() {
       </div>
     `;
 
-    card.querySelector('.btn-edit-app').addEventListener('click', () => {
+    card.querySelector('.btn-edit-app').addEventListener('click', (e) => {
+      e.stopPropagation();
       openAppointmentModal(app);
     });
 
-    container.appendChild(card);
+    return card;
+  }
+
+  // MODE 1: HOURLY TIMELINE / CALENDAR VIEW
+  if (state.scheduleViewMode === 'timeline') {
+    const timeline = document.createElement('div');
+    timeline.className = 'timeline-container';
+
+    // Determine working hours (default 09:00 to 21:00, or wider if earlier/later apps exist)
+    let minHour = 9;
+    let maxHour = 21;
+
+    dayApps.forEach(a => {
+      if (a.startTime) {
+        const h = parseInt(a.startTime.split(':')[0], 10);
+        if (!isNaN(h)) {
+          if (h < minHour) minHour = Math.max(0, h);
+          if (h > maxHour) maxHour = Math.min(23, h);
+        }
+      }
+      if (a.endTime) {
+        const h = parseInt(a.endTime.split(':')[0], 10);
+        if (!isNaN(h)) {
+          if (h > maxHour) maxHour = Math.min(23, h);
+        }
+      }
+    });
+
+    for (let hour = minHour; hour <= maxHour; hour++) {
+      const hourStr = String(hour).padStart(2, '0') + ':00';
+      const nextHourStr = String(hour + 1).padStart(2, '0') + ':00';
+
+      const row = document.createElement('div');
+      row.className = 'timeline-hour-row';
+
+      // Left time column
+      const timeCol = document.createElement('div');
+      timeCol.className = 'timeline-time-col';
+      timeCol.innerText = hourStr;
+
+      // Right content column
+      const contentCol = document.createElement('div');
+      contentCol.className = 'timeline-content-col';
+
+      // Find appointments starting in this hour
+      const hourApps = dayApps.filter(a => {
+        if (!a.startTime) return false;
+        const [h] = a.startTime.split(':').map(Number);
+        return h === hour;
+      });
+
+      if (hourApps.length > 0) {
+        hourApps.forEach(app => {
+          contentCol.appendChild(createAppointmentCard(app));
+        });
+      } else {
+        // Empty slot - click to add appointment at this time
+        const emptySlot = document.createElement('div');
+        emptySlot.className = 'timeline-empty-slot';
+        emptySlot.innerHTML = `
+          <span class="empty-slot-plus">+</span>
+          <span>Свободно на ${hourStr} <span style="font-size: 11px; opacity: 0.7;">(нажмите для записи)</span></span>
+        `;
+        emptySlot.addEventListener('click', () => {
+          openAppointmentModal(null, null, hourStr);
+        });
+        contentCol.appendChild(emptySlot);
+      }
+
+      row.appendChild(timeCol);
+      row.appendChild(contentCol);
+      timeline.appendChild(row);
+    }
+
+    container.appendChild(timeline);
+    return;
+  }
+
+  // MODE 2: CLASSIC LIST VIEW
+  if (dayApps.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✂️</div>
+        <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px; color: var(--text-main);">
+          На этот день записей нет
+        </div>
+        <div>Нажмите кнопку «+», чтобы записать клиента на ${formatDisplayDate(state.selectedDate)}</div>
+      </div>
+    `;
+    return;
+  }
+
+  dayApps.forEach(app => {
+    container.appendChild(createAppointmentCard(app));
   });
 }
 
-function openAppointmentModal(app = null) {
+function openAppointmentModal(app = null, preselectedClient = null, defaultStartTime = null) {
   state.editingAppointmentId = app ? app.id : null;
   state.selectedServicesForAppointment.clear();
 
@@ -410,6 +520,22 @@ function openAppointmentModal(app = null) {
 
   modalTitle.innerText = app ? 'Редактирование записи' : 'Новая запись';
   btnDelete.style.display = app ? 'block' : 'none';
+
+  // Populate existing clients dropdown
+  const clientsCountEl = document.getElementById('existingClientsCount');
+  if (clientsCountEl) clientsCountEl.innerText = state.clients.length;
+
+  const clientSelect = document.getElementById('appExistingClientSelect');
+  if (clientSelect) {
+    clientSelect.innerHTML = '<option value="">-- Выберите клиента из базы --</option>';
+    const sortedClients = [...state.clients].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    sortedClients.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.name}${c.phone ? ' (' + c.phone + ')' : ''}`;
+      clientSelect.appendChild(opt);
+    });
+  }
 
   // Fill services selector
   servicesBox.innerHTML = '';
@@ -446,8 +572,6 @@ function openAppointmentModal(app = null) {
 
   if (app) {
     document.getElementById('appId').value = app.id;
-    document.getElementById('appClientName').value = app.clientName || '';
-    document.getElementById('appClientPhone').value = app.clientPhone || '';
     document.getElementById('appDate').value = app.date || state.selectedDate;
     document.getElementById('appStartTime').value = app.startTime || '10:00';
     document.getElementById('appEndTime').value = app.endTime || '11:00';
@@ -455,17 +579,58 @@ function openAppointmentModal(app = null) {
     document.getElementById('appMaterialsUsed').value = app.materialsUsed || '';
     document.getElementById('appNotes').value = app.notes || '';
     document.getElementById('appStatus').value = app.status || 'scheduled';
-  } else {
+
+    // Find if client exists in database
+    const matchedClient = state.clients.find(c => 
+      (app.clientName && c.name.toLowerCase() === app.clientName.toLowerCase()) ||
+      (app.clientPhone && c.phone && c.phone === app.clientPhone)
+    );
+
+    if (matchedClient) {
+      setClientMode('existing');
+      document.getElementById('appExistingClientSelect').value = matchedClient.id;
+      updateClientSelectionFromDropdown();
+    } else {
+      setClientMode('new');
+      document.getElementById('appClientName').value = app.clientName || '';
+      document.getElementById('appClientPhone').value = app.clientPhone || '';
+    }
+  } else if (preselectedClient) {
     document.getElementById('appId').value = '';
-    document.getElementById('appClientName').value = '';
-    document.getElementById('appClientPhone').value = '';
     document.getElementById('appDate').value = state.selectedDate;
     document.getElementById('appStartTime').value = '10:00';
     document.getElementById('appEndTime').value = '11:00';
     document.getElementById('appTotalPrice').value = '';
     document.getElementById('appMaterialsUsed').value = '';
+    document.getElementById('appNotes').value = preselectedClient.notes || '';
+    document.getElementById('appStatus').value = 'scheduled';
+
+    setClientMode('existing');
+    document.getElementById('appExistingClientSelect').value = preselectedClient.id;
+    updateClientSelectionFromDropdown();
+  } else {
+    document.getElementById('appId').value = '';
+    document.getElementById('appDate').value = state.selectedDate;
+    const initStartTime = defaultStartTime || '10:00';
+    document.getElementById('appStartTime').value = initStartTime;
+    const [startH, startM] = initStartTime.split(':').map(Number);
+    const endH = String(Math.min(23, (startH || 10) + 1)).padStart(2, '0');
+    const endM = String(startM || 0).padStart(2, '0');
+    document.getElementById('appEndTime').value = `${endH}:${endM}`;
+    document.getElementById('appTotalPrice').value = '';
+    document.getElementById('appMaterialsUsed').value = '';
     document.getElementById('appNotes').value = '';
     document.getElementById('appStatus').value = 'scheduled';
+
+    if (state.clients.length > 0) {
+      setClientMode('existing');
+      document.getElementById('appExistingClientSelect').value = '';
+      updateClientSelectionFromDropdown();
+    } else {
+      setClientMode('new');
+      document.getElementById('appClientName').value = '';
+      document.getElementById('appClientPhone').value = '';
+    }
   }
 
   openModal('modalAppointment');
@@ -513,6 +678,14 @@ async function handleAppointmentSubmit(e) {
       });
     }
   });
+
+  const clientName = document.getElementById('appClientName').value.trim();
+  if (!clientName) {
+    showToast(state.appointmentClientMode === 'existing' 
+      ? 'Пожалуйста, выберите клиента из списка или переключитесь на «Новый клиент»' 
+      : 'Пожалуйста, введите имя нового клиента', 'error');
+    return;
+  }
 
   if (selectedServices.length === 0) {
     showToast('Пожалуйста, выберите хотя бы одну услугу', 'error');
@@ -1036,4 +1209,81 @@ async function handleResetDemo() {
     closeModal('modalSettings');
     await reloadData();
   }
+}
+
+
+// ================= APPOINTMENT CLIENT SELECTION =================
+function setClientMode(mode) {
+  state.appointmentClientMode = mode;
+  const btnExisting = document.getElementById('btnClientModeExisting');
+  const btnNew = document.getElementById('btnClientModeNew');
+  const blockExisting = document.getElementById('existingClientBlock');
+  const blockNew = document.getElementById('newClientBlock');
+  const nameInput = document.getElementById('appClientName');
+  const phoneInput = document.getElementById('appClientPhone');
+
+  if (mode === 'existing') {
+    btnExisting.classList.add('active');
+    btnNew.classList.remove('active');
+    blockExisting.style.display = 'block';
+    blockNew.style.display = 'none';
+    updateClientSelectionFromDropdown();
+  } else {
+    btnNew.classList.add('active');
+    btnExisting.classList.remove('active');
+    blockExisting.style.display = 'none';
+    blockNew.style.display = 'block';
+    document.getElementById('selectedClientCard').style.display = 'none';
+    nameInput.focus();
+  }
+}
+
+function updateClientSelectionFromDropdown() {
+  const select = document.getElementById('appExistingClientSelect');
+  const nameInput = document.getElementById('appClientName');
+  const phoneInput = document.getElementById('appClientPhone');
+  const card = document.getElementById('selectedClientCard');
+  const cardName = document.getElementById('selectedClientName');
+  const cardPhone = document.getElementById('selectedClientPhone');
+  const formulaPrompt = document.getElementById('selectedClientFormulaPrompt');
+  const formulaText = document.getElementById('selectedClientFormulaText');
+
+  const selectedId = Number(select.value);
+  const client = state.clients.find(c => c.id === selectedId);
+
+  if (client) {
+    nameInput.value = client.name;
+    phoneInput.value = client.phone || '';
+    cardName.innerText = client.name;
+    cardPhone.innerText = client.phone || 'Телефон не указан';
+    card.style.display = 'block';
+
+    if (client.notes && client.notes.trim()) {
+      formulaPrompt.style.display = 'block';
+      formulaText.innerText = client.notes;
+    } else {
+      formulaPrompt.style.display = 'none';
+    }
+  } else {
+    nameInput.value = '';
+    phoneInput.value = '';
+    card.style.display = 'none';
+    formulaPrompt.style.display = 'none';
+  }
+}
+
+function copyClientFormulaToNotes() {
+  const formulaText = document.getElementById('selectedClientFormulaText').innerText;
+  const notesField = document.getElementById('appNotes');
+
+  if (!formulaText) return;
+
+  if (notesField.value.trim()) {
+    if (!notesField.value.includes(formulaText)) {
+      notesField.value += '\n' + formulaText;
+    }
+  } else {
+    notesField.value = formulaText;
+  }
+  showToast('Формула окрашивания скопирована в заметку');
 }

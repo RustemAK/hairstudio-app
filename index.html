@@ -73,11 +73,22 @@
         <!-- Generated dynamically via JS -->
       </div>
 
-      <!-- Schedule Filter -->
-      <div class="chips-filter" id="appointmentStatusFilter">
-        <button class="chip-btn active" data-filter="all">Все записи</button>
-        <button class="chip-btn" data-filter="scheduled">Запланированы</button>
-        <button class="chip-btn" data-filter="completed">Выполнены</button>
+      <!-- Schedule Header Controls (Mobile Dropdowns) -->
+      <div class="schedule-toolbar">
+        <div class="toolbar-item" style="flex: 1.3;">
+          <select id="appointmentStatusFilter" class="schedule-dropdown">
+            <option value="all">🔍 Все статусы</option>
+            <option value="scheduled">🟡 Запланировано</option>
+            <option value="completed">🟢 Выполнено</option>
+            <option value="cancelled">🔴 Отменено</option>
+          </select>
+        </div>
+        <div class="toolbar-item" style="flex: 1;">
+          <select id="scheduleViewSelect" class="schedule-dropdown">
+            <option value="timeline" selected>⏱ По часам</option>
+            <option value="list">📋 Списком</option>
+          </select>
+        </div>
       </div>
 
       <!-- Appointments List -->
@@ -230,13 +241,45 @@
         <input type="hidden" id="appId">
 
         <div class="form-group">
-          <label class="form-label">Имя клиента *</label>
-          <input type="text" id="appClientName" class="form-input" placeholder="Например: Анна Смирнова" required>
-        </div>
+          <label class="form-label">Клиент *</label>
+          <div class="client-mode-toggle" id="clientModeToggle">
+            <button type="button" class="chip-btn active" id="btnClientModeExisting">
+              👤 Постоянный клиент (<span id="existingClientsCount">0</span>)
+            </button>
+            <button type="button" class="chip-btn" id="btnClientModeNew">
+              ➕ Новый клиент
+            </button>
+          </div>
 
-        <div class="form-group">
-          <label class="form-label">Номер телефона</label>
-          <input type="tel" id="appClientPhone" class="form-input" placeholder="+7 999 123-45-67">
+          <!-- Выбор постоянного клиента из базы -->
+          <div id="existingClientBlock">
+            <select id="appExistingClientSelect" class="form-select">
+              <option value="">-- Выберите клиента из базы --</option>
+            </select>
+            <div id="selectedClientCard" class="client-card-preview" style="display: none;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span id="selectedClientName" style="font-weight: 600; color: var(--text-main);"></span>
+                <span id="selectedClientPhone" style="color: var(--accent-gold-light); font-size: 13px;"></span>
+              </div>
+              <div id="selectedClientFormulaPrompt" class="client-formula-box" style="display: none;">
+                <div style="color: var(--accent-gold-light); font-weight: 600; font-size: 11px;">💡 Формула / Заметки клиента:</div>
+                <div id="selectedClientFormulaText" style="color: var(--text-muted); margin-top: 2px; font-size: 12px;"></div>
+                <button type="button" id="btnCopyClientFormula" style="margin-top: 6px; background: none; border: none; color: var(--accent-gold); font-size: 11px; font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline;">
+                  📋 Вставить формулу в заметку записи
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Поля для нового клиента -->
+          <div id="newClientBlock" style="display: none;">
+            <div style="margin-bottom: 8px;">
+              <input type="text" id="appClientName" class="form-input" placeholder="Имя клиента *" autocomplete="off">
+            </div>
+            <div>
+              <input type="tel" id="appClientPhone" class="form-input" placeholder="Номер телефона (+7 ...)">
+            </div>
+          </div>
         </div>
 
         <div class="form-row">
@@ -421,6 +464,7 @@
           <label class="form-label">Формулы окрашивания и заметки по клиенту</label>
           <textarea id="clientDetailsNotes" class="form-textarea" placeholder="Заметки о клиенте, аллергии, формулы краски..."></textarea>
           <button id="btnSaveClientNotes" class="btn-secondary" style="margin-top: 6px;">Сохранить формулу</button>
+          <button type="button" id="btnBookThisClient" class="btn-primary" style="margin-top: 10px; width: 100%;">📅 Создать запись для этого клиента</button>
         </div>
 
         <div class="form-group">
