@@ -296,9 +296,26 @@
             <div style="margin-bottom: 8px;">
               <input type="text" id="appClientName" class="form-input" placeholder="Имя клиента *" autocomplete="off">
             </div>
-            <div>
-              <input type="tel" id="appClientPhone" class="form-input" placeholder="Номер телефона (+7 ...)">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="tel" id="appClientPhone" class="form-input" placeholder="Номер телефона (+7 ...)" style="flex: 1;">
+              <button type="button" id="btnPastePhone" class="btn-secondary" style="padding: 10px 12px; font-size: 12px; white-space: nowrap;" title="Вставить скопированный номер из буфера">
+                📋 Вставить
+              </button>
             </div>
+          </div>
+
+          <!-- Канал связи / Как обратился клиент -->
+          <div class="form-group" style="margin-top: 12px;">
+            <label class="form-label">Как обратился клиент *</label>
+            <div class="channel-toggle" id="channelToggle" style="display: flex; gap: 8px;">
+              <button type="button" class="chip-btn active" id="btnChannelPhone" data-channel="phone" style="flex: 1; text-align: center;">
+                📞 Телефонный звонок
+              </button>
+              <button type="button" class="chip-btn" id="btnChannelWhatsapp" data-channel="whatsapp" style="flex: 1; text-align: center;">
+                💬 WhatsApp
+              </button>
+            </div>
+            <input type="hidden" id="appChannel" value="phone">
           </div>
         </div>
 

@@ -173,6 +173,20 @@ function setupEventListeners() {
     });
   }
 
+  // Channel toggle listeners (Phone vs WhatsApp)
+  const btnChannelPhone = document.getElementById('btnChannelPhone');
+  const btnChannelWhatsapp = document.getElementById('btnChannelWhatsapp');
+  if (btnChannelPhone && btnChannelWhatsapp) {
+    btnChannelPhone.addEventListener('click', () => setChannelMode('phone'));
+    btnChannelWhatsapp.addEventListener('click', () => setChannelMode('whatsapp'));
+  }
+
+  // Paste phone button listener
+  const btnPastePhone = document.getElementById('btnPastePhone');
+  if (btnPastePhone) {
+    btnPastePhone.addEventListener('click', handlePastePhone);
+  }
+
   // Appointment client mode listeners
   document.getElementById('btnClientModeExisting').addEventListener('click', () => setClientMode('existing'));
   document.getElementById('btnClientModeNew').addEventListener('click', () => setClientMode('new'));
@@ -385,6 +399,9 @@ function renderSchedule() {
       <div class="card-top">
         <div class="time-slot">
           🕒 ${app.startTime || '--:--'} — ${app.endTime || '--:--'}
+          ${app.channel === 'whatsapp' 
+            ? '<span class="channel-badge whatsapp" title="Запись через WhatsApp">💬 WhatsApp</span>' 
+            : '<span class="channel-badge phone" title="Запись по телефонному звонку">📞 Звонок</span>'}
         </div>
         <span class="badge-status ${app.status}">
           ${statusLabels[app.status] || app.status}
@@ -549,6 +566,7 @@ function openAppointmentModal(app = null, preselectedClient = null, defaultStart
   const btnDelete = document.getElementById('btnDeleteAppointment');
 
   modalTitle.innerText = app ? 'Редактирование записи' : 'Новая запись';
+  setChannelMode(app && app.channel ? app.channel : 'phone');
   btnDelete.style.display = app ? 'block' : 'none';
 
   // Populate existing clients dropdown
@@ -739,6 +757,7 @@ async function handleAppointmentSubmit(e) {
     materialsUsed: document.getElementById('appMaterialsUsed').value.trim(),
     notes: document.getElementById('appNotes').value.trim(),
     status: document.getElementById('appStatus').value,
+    channel: document.getElementById('appChannel').value || 'phone',
     updatedAt: new Date().toISOString()
   };
 
@@ -1364,4 +1383,76 @@ function renderSelectedServicesInModal() {
 
     container.appendChild(chip);
   });
+}
+
+
+// ================= CHANNEL & CLIPBOARD PHONE HELPERS =================
+function setChannelMode(channel) {
+  const hiddenInput = document.getElementById('appChannel');
+  if (hiddenInput) hiddenInput.value = channel;
+
+  const btnPhone = document.getElementById('btnChannelPhone');
+  const btnWhatsapp = document.getElementById('btnChannelWhatsapp');
+  if (btnPhone && btnWhatsapp) {
+    if (channel === 'phone') {
+      btnPhone.classList.add('active');
+      btnWhatsapp.classList.remove('active');
+    } else {
+      btnWhatsapp.classList.add('active');
+      btnPhone.classList.remove('active');
+    }
+  }
+}
+
+async function handlePastePhone() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text || !text.trim()) {
+      showToast('Буфер обмена пуст', 'error');
+      return;
+    }
+
+    const cleaned = text.trim();
+    const digits = cleaned.replace(/\D/g, '');
+
+    if (digits.length < 6) {
+      showToast('В буфере не найден номер телефона', 'error');
+      return;
+    }
+
+    let formattedPhone = cleaned;
+    if (digits.length === 11 && (digits.startsWith('7') || digits.startsWith('8'))) {
+      formattedPhone = `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`;
+    } else if (digits.length === 10) {
+      formattedPhone = `+7 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 8)}-${digits.slice(8, 10)}`;
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+' + digits;
+    }
+
+    document.getElementById('appClientPhone').value = formattedPhone;
+
+    // Check if this phone number exists in our clients database
+    const matchedClient = state.clients.find(c => {
+      if (!c.phone) return false;
+      const cDigits = c.phone.replace(/\D/g, '');
+      return cDigits.endsWith(digits.slice(-10)) || digits.endsWith(cDigits.slice(-10));
+    });
+
+    if (matchedClient) {
+      document.getElementById('appClientName').value = matchedClient.name;
+      if (matchedClient.notes && !document.getElementById('appNotes').value) {
+        document.getElementById('appNotes').value = matchedClient.notes;
+      }
+      showToast(`Клиент найден: ${matchedClient.name}!`);
+    } else {
+      showToast('Номер вставлен из буфера');
+      document.getElementById('appClientName').focus();
+    }
+  } catch (err) {
+    const manual = prompt('Вставьте номер телефона из буфера:');
+    if (manual) {
+      document.getElementById('appClientPhone').value = manual.trim();
+      showToast('Номер добавлен');
+    }
+  }
 }
