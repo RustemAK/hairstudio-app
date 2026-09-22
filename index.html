@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=17">
+  <link rel="stylesheet" href="css/style.css?v=19">
 </head>
 <body>
 
@@ -34,11 +34,12 @@
       </div>
       <div>
         <div class="brand-title">
-          HairStudio <span class="brand-badge">PRO</span>
+          <span id="headerStudioName">HairStudio</span>
         </div>
       </div>
     </div>
     <div class="header-actions">
+      <button id="btnThemeToggle" class="btn-icon" title="Переключить тему (светлая/тёмная)" aria-label="Тема">🌙</button>
       <button id="btnSettings" class="btn-icon" title="Настройки и бэкап" aria-label="Настройки">
         ⚙️
       </button>
@@ -525,6 +526,27 @@
         <button class="modal-close" data-close="modalSettings">✕</button>
       </div>
       <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Название студии / Имя мастера</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="settingStudioName" class="form-input" placeholder="Например: Студия Анны, Barber King..." maxlength="35">
+            <button type="button" id="btnSaveStudioName" class="btn-primary" style="white-space: nowrap; width: auto; padding: 0 16px;">Сохранить</button>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Отображается в шапке и названии приложения</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Тема оформления</label>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" id="btnThemeDark" class="theme-choice-btn active" data-theme-val="dark" style="flex: 1; padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main); font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              🌙 Тёмная
+            </button>
+            <button type="button" id="btnThemeLight" class="theme-choice-btn" data-theme-val="light" style="flex: 1; padding: 10px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main); font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              ☀️ Светлая
+            </button>
+          </div>
+        </div>
+
         <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px;">
           <h4 style="color: var(--accent-gold-light); font-size: 14px; margin-bottom: 4px;">📲 Установка на iPhone / Android</h4>
           <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
@@ -556,7 +578,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/db.js?v=17"></script>
-  <script src="js/app.js?v=17"></script>
+  <script src="js/db.js?v=19"></script>
+  <script src="js/app.js?v=19"></script>
 </body>
 </html>

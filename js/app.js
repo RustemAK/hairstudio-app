@@ -111,7 +111,76 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+// ================= THEME & CUSTOM BRANDING =================
+function loadStudioName() {
+  const savedName = localStorage.getItem('hairstudio_studio_name') || 'HairStudio';
+  const headerElem = document.getElementById('headerStudioName');
+  if (headerElem) {
+    headerElem.innerText = savedName;
+  }
+  const inputElem = document.getElementById('settingStudioName');
+  if (inputElem) {
+    inputElem.value = savedName;
+  }
+  document.title = `${savedName} — Запись клиентов и Учет`;
+}
+
+function handleSaveStudioName() {
+  const inputElem = document.getElementById('settingStudioName');
+  if (!inputElem) return;
+  const newName = inputElem.value.trim() || 'HairStudio';
+  localStorage.setItem('hairstudio_studio_name', newName);
+  loadStudioName();
+  showToast('Название сохранено!');
+}
+
+function applyTheme(theme) {
+  const isLight = theme === 'light';
+  if (isLight) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+
+  // Update theme meta color
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.setAttribute('content', isLight ? '#f6f8fb' : '#0a0e17');
+  }
+
+  // Update header toggle button icon
+  const btnToggle = document.getElementById('btnThemeToggle');
+  if (btnToggle) {
+    btnToggle.innerText = isLight ? '☀️' : '🌙';
+    btnToggle.title = isLight ? 'Светлая тема (нажмите для тёмной)' : 'Тёмная тема (нажмите для светлой)';
+  }
+
+  // Update modal buttons active state
+  const btnDark = document.getElementById('btnThemeDark');
+  const btnLight = document.getElementById('btnThemeLight');
+  if (btnDark && btnLight) {
+    btnDark.classList.toggle('active', !isLight);
+    btnLight.classList.toggle('active', isLight);
+  }
+
+  localStorage.setItem('hairstudio_theme', isLight ? 'light' : 'dark');
+}
+
+function toggleTheme() {
+  const currentTheme = localStorage.getItem('hairstudio_theme') || 'dark';
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  applyTheme(newTheme);
+  showToast(newTheme === 'light' ? 'Включена светлая тема' : 'Включена тёмная тема');
+}
+
 function restoreSavedPreferences() {
+  // Restore theme
+  const savedTheme = localStorage.getItem('hairstudio_theme') || 'dark';
+  applyTheme(savedTheme);
+
+  // Restore custom studio / master name
+  loadStudioName();
+
   // Restore view mode (timeline vs list)
   const savedViewMode = localStorage.getItem('hairstudio_schedule_view');
   if (savedViewMode) {
@@ -389,6 +458,35 @@ function setupEventListeners() {
 
   // Auto calculate end time on start time change
   document.getElementById('appStartTime').addEventListener('change', recalcAppointmentEndTime);
+
+  // Studio / Master name save listener
+  const btnSaveName = document.getElementById('btnSaveStudioName');
+  if (btnSaveName) {
+    btnSaveName.addEventListener('click', handleSaveStudioName);
+  }
+  const inputStudioName = document.getElementById('settingStudioName');
+  if (inputStudioName) {
+    inputStudioName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSaveStudioName();
+      }
+    });
+  }
+
+  // Theme switch listeners
+  const btnThemeToggle = document.getElementById('btnThemeToggle');
+  if (btnThemeToggle) {
+    btnThemeToggle.addEventListener('click', toggleTheme);
+  }
+  const btnThemeDark = document.getElementById('btnThemeDark');
+  if (btnThemeDark) {
+    btnThemeDark.addEventListener('click', () => applyTheme('dark'));
+  }
+  const btnThemeLight = document.getElementById('btnThemeLight');
+  if (btnThemeLight) {
+    btnThemeLight.addEventListener('click', () => applyTheme('light'));
+  }
 }
 
 function switchTab(tabId, shouldScroll = true) {
