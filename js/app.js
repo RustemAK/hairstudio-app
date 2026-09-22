@@ -1041,6 +1041,9 @@ function renderSchedule() {
           <div class="compact-quick-actions">
             ${waLink ? `<a href="${waLink}" target="_blank" class="compact-mini-btn whatsapp" title="WhatsApp">💬</a>` : ''}
             ${telLink ? `<a href="${telLink}" class="compact-mini-btn call" title="Позвонить">📞</a>` : ''}
+            <button type="button" class="compact-mini-btn parallel btn-parallel-app" title="Доп. запись на ${app.startTime || '--:--'} (+)" aria-label="Доп. запись на ${app.startTime || '--:--'}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
           </div>
         </div>
       `;
@@ -1094,6 +1097,9 @@ function renderSchedule() {
             ` : ''}
             ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
             ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
+            <button type="button" class="btn-action-small parallel btn-parallel-app" title="Доп. запись на ${app.startTime || '--:--'} (+)" aria-label="Доп. запись на ${app.startTime || '--:--'}">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
           </div>
         </div>
       `;
@@ -1116,6 +1122,14 @@ function renderSchedule() {
         await window.db.updateAppointment(app);
         showToast(`Запись «${app.clientName}» выполнена и оплачена!`);
         await reloadData();
+      });
+    }
+
+    const btnParallel = card.querySelector('.btn-parallel-app');
+    if (btnParallel) {
+      btnParallel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAppointmentModal(null, null, app.startTime, app.date);
       });
     }
 
@@ -1203,17 +1217,64 @@ function renderSchedule() {
       const contentCol = document.createElement('div');
       contentCol.className = 'timeline-content-col';
 
-      // Find appointments starting in this hour
+      // Find appointments starting in this hour, sorted by startTime
       const hourApps = dayApps.filter(a => {
         if (!a.startTime) return false;
         const [h] = a.startTime.split(':').map(Number);
         return h === hour;
-      });
+      }).sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
       if (hourApps.length > 0) {
-        hourApps.forEach(app => {
+        const firstApp = hourApps[0];
+        const [firstH, firstM] = (firstApp.startTime || '00:00').split(':').map(Number);
+
+        // If the first appointment starts after :00 (e.g. 10:15, 10:30), show a compact pre-slot for :00
+        if (firstM > 0) {
+          const preSlot = document.createElement('div');
+          preSlot.className = 'timeline-empty-slot compact-pre-slot';
+          preSlot.title = `Свободно с ${hourStr} до ${firstApp.startTime} (нажмите для записи)`;
+          preSlot.innerHTML = `
+            <span class="empty-slot-plus">+</span>
+            <span>Свободно на ${hourStr}</span>
+          `;
+          preSlot.addEventListener('click', () => {
+            openAppointmentModal(null, null, hourStr);
+          });
+          contentCol.appendChild(preSlot);
+        }
+
+        let lastMarkerTime = '';
+
+        hourApps.forEach((app) => {
+          const [appH, appM] = (app.startTime || '00:00').split(':').map(Number);
+
+          // If appointment starts at non-zero minutes (e.g. 10:15, 11:15, 10:30),
+          // show a horizontal dashed line with the exact time badge on the left
+          if (appM !== 0 && app.startTime !== lastMarkerTime) {
+            const markerRow = document.createElement('div');
+            markerRow.className = 'timeline-time-marker-row';
+            markerRow.innerHTML = `
+              <div class="timeline-subhour-badge">${app.startTime}</div>
+              <div class="timeline-subhour-dot"></div>
+              <div class="timeline-subhour-line"></div>
+            `;
+            contentCol.appendChild(markerRow);
+            lastMarkerTime = app.startTime;
+          }
+
           contentCol.appendChild(createAppointmentCard(app));
         });
+
+        // Button to easily add an additional appointment in this hour
+        const addParallelBtn = document.createElement('button');
+        addParallelBtn.type = 'button';
+        addParallelBtn.className = 'btn-timeline-add-parallel';
+        addParallelBtn.innerHTML = `<span class="plus-icon">+</span> Доп. запись на ${hourStr}`;
+        addParallelBtn.title = `Добавить еще запись на ${hourStr}`;
+        addParallelBtn.addEventListener('click', () => {
+          openAppointmentModal(null, null, hourStr);
+        });
+        contentCol.appendChild(addParallelBtn);
       } else {
         // Empty slot - click to add appointment at this time
         const emptySlot = document.createElement('div');
@@ -1279,7 +1340,7 @@ function renderSchedule() {
   });
 }
 
-function openAppointmentModal(app = null, preselectedClient = null, defaultStartTime = null) {
+function openAppointmentModal(app = null, preselectedClient = null, defaultStartTime = null, defaultDate = null) {
   state.editingAppointmentId = app ? app.id : null;
   state.selectedServicesForAppointment.clear();
 
@@ -1385,7 +1446,7 @@ function openAppointmentModal(app = null, preselectedClient = null, defaultStart
     updateClientSelectionFromDropdown();
   } else {
     document.getElementById('appId').value = '';
-    document.getElementById('appDate').value = state.selectedDate;
+    document.getElementById('appDate').value = defaultDate || state.selectedDate;
     const defaultHour = typeof state.workStartHour === 'number' ? state.workStartHour : 9;
     const initStartTime = defaultStartTime || `${String(defaultHour).padStart(2, '0')}:00`;
     document.getElementById('appStartTime').value = initStartTime;
