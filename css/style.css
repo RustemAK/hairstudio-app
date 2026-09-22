@@ -226,7 +226,7 @@
 
 html, body {
   width: 100%;
-  max-width: 100%;
+  max-width: 100vw;
   height: 100%;
   background-color: var(--bg-primary);
   color: var(--text-main);
@@ -238,6 +238,7 @@ html, body {
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
+  box-sizing: border-box;
 }
 
 body {
@@ -245,6 +246,7 @@ body {
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
+  width: 100%;
   max-width: 100vw;
   overflow-x: hidden !important;
   overscroll-behavior-x: none;
@@ -255,6 +257,7 @@ body {
     radial-gradient(circle at 10% 15%, rgba(245, 158, 11, 0.07) 0%, transparent 40%),
     radial-gradient(circle at 90% 85%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
   background-attachment: fixed;
+  box-sizing: border-box;
 }
 
 /* App Header */
@@ -344,22 +347,29 @@ body {
 
 /* Quick Daily Banner */
 .daily-banner {
-  padding: 8px 14px;
+  padding: 8px 12px;
   margin: 6px 16px 4px;
+  width: calc(100% - 32px);
+  max-width: calc(100% - 32px);
+  box-sizing: border-box;
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   justify-content: space-between;
   align-items: center;
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .banner-left {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .banner-title {
@@ -368,6 +378,7 @@ body {
   color: var(--accent-gold);
   text-transform: uppercase;
   letter-spacing: 0.6px;
+  flex-shrink: 0;
 }
 
 .banner-date {
@@ -375,12 +386,16 @@ body {
   font-weight: 600;
   color: var(--text-main);
   margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .banner-stats {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .banner-stat-item {
@@ -388,6 +403,7 @@ body {
   align-items: baseline;
   gap: 4px;
   text-align: right;
+  white-space: nowrap;
 }
 
 .banner-stat-label {
@@ -408,12 +424,17 @@ body {
   max-width: 600px;
   margin: 0 auto;
   width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* Tab Screens */
 .tab-screen {
   display: none;
   animation: fadeIn 0.3s ease;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .tab-screen.active {
@@ -433,6 +454,9 @@ body {
   padding: 4px 2px 14px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .date-strip-container::-webkit-scrollbar {
@@ -527,18 +551,22 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 14px;
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   position: relative;
   overflow: hidden;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .appointment-card:hover {
@@ -573,15 +601,22 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex-wrap: wrap;
 }
 
 .time-slot {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 15px;
+  gap: 4px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--accent-gold-light);
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .badge-status {
@@ -613,12 +648,20 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .client-name {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .client-phone {
@@ -1345,11 +1388,58 @@ input[type="number"] {
   gap: 8px;
   margin-bottom: 10px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.toolbar-item {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+.toolbar-item.filter-item {
+  flex: 1.15 1 0%;
+}
+
+.toolbar-item.view-item {
+  flex: 0.85 1 0%;
+}
+
+.schedule-dropdown {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px 24px 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-fast);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.schedule-dropdown:focus {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 2px rgba(212, 163, 89, 0.15);
 }
 
 .btn-density-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   padding: 8px 11px;
   background: var(--bg-card);
@@ -1365,6 +1455,7 @@ input[type="number"] {
   transition: all 0.2s ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
 }
 
 .btn-density-toggle:hover {
@@ -1394,59 +1485,38 @@ input[type="number"] {
   color: #b45309;
 }
 
-.toolbar-item {
-  position: relative;
-}
-
-.schedule-dropdown {
-  width: 100%;
-  padding: 9px 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  color: var(--text-main);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  outline: none;
-  transition: var(--transition-fast);
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
-}
-
-.schedule-dropdown:focus {
-  border-color: var(--accent-gold);
-  box-shadow: 0 0 0 2px rgba(212, 163, 89, 0.15);
-}
-
 /* Hourly Timeline Schedule */
 .timeline-container {
   display: flex;
   flex-direction: column;
   margin-top: 6px;
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .timeline-hour-row {
   display: flex;
-  min-height: 74px;
+  min-height: 52px;
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .timeline-time-col {
-  width: 46px;
+  width: 44px;
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 700;
   color: var(--text-muted);
   padding-top: 2px;
   text-align: right;
-  padding-right: 12px;
+  padding-right: 10px;
   position: relative;
+  box-sizing: border-box;
 }
 
 .timeline-time-col::after {
@@ -1463,14 +1533,18 @@ input[type="number"] {
 }
 
 .timeline-content-col {
-  flex: 1;
-  padding-left: 10px;
-  padding-bottom: 12px;
+  flex: 1 1 0%;
+  min-width: 0 !important;
+  max-width: calc(100% - 44px);
+  padding-left: 8px;
+  padding-bottom: 10px;
   border-left: 2px solid rgba(212, 163, 89, 0.22);
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .timeline-empty-slot {
@@ -1719,29 +1793,38 @@ input[type="number"] {
 
 /* ================= COMPACT APPOINTMENT CARD ================= */
 .appointment-card.compact {
-  padding: 10px 14px;
-  gap: 5px;
+  padding: 8px 10px;
+  gap: 4px;
+  border-radius: var(--radius-md);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .compact-row-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .compact-time-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   overflow: hidden;
-  flex: 1;
+  flex: 1 1 0%;
   min-width: 0;
+  max-width: 100%;
 }
 
 .compact-time {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--accent-gold-light);
   white-space: nowrap;
@@ -1753,36 +1836,52 @@ input[type="number"] {
 }
 
 .compact-client-name {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-main);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .compact-channel-icon,
 .compact-note-indicator {
-  font-size: 13px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
 .compact-price-status {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .compact-price {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-main);
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.compact-price-status .btn-action-small {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.compact-price-status .btn-action-small svg {
+  width: 13px;
+  height: 13px;
 }
 
 .compact-status-badge {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   width: 22px;
   height: 22px;
@@ -1790,6 +1889,7 @@ input[type="number"] {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
+  flex-shrink: 0;
 }
 
 .compact-status-badge.completed {
@@ -1806,9 +1906,12 @@ input[type="number"] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  font-size: 12px;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 11.5px;
 }
 
 .compact-services-text {
@@ -1816,15 +1919,15 @@ input[type="number"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
+  flex: 1 1 0%;
   min-width: 0;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .compact-quick-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-shrink: 0;
 }
 
@@ -1832,14 +1935,15 @@ input[type="number"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border-color);
-  font-size: 12px;
+  font-size: 11px;
   text-decoration: none;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .compact-mini-btn:hover {
@@ -1860,8 +1964,8 @@ input[type="number"] {
 /* Compact Timeline tweaks */
 .timeline-container.compact .timeline-empty-slot {
   min-height: 32px;
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 4px 8px;
+  font-size: 11.5px;
 }
 
 .timeline-container.compact .timeline-empty-slot .empty-slot-plus {
@@ -1870,5 +1974,136 @@ input[type="number"] {
 
 .timeline-container.compact .timeline-time-col {
   padding-top: 6px;
-  font-size: 12px;
+  font-size: 11.5px;
+}
+
+/* ================= RESPONSIVE MOBILE HARDENING ================= */
+@media (max-width: 480px) {
+  #densityToggleText {
+    display: none;
+  }
+
+  .btn-density-toggle {
+    padding: 0;
+    width: 36px;
+    height: 35px;
+    font-size: 15px;
+    border-radius: var(--radius-md);
+  }
+
+  .schedule-toolbar {
+    gap: 6px;
+  }
+
+  .schedule-dropdown {
+    font-size: 11.5px;
+    padding: 7px 20px 7px 6px;
+    background-position: right 6px center;
+  }
+
+  .card-top {
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .time-slot {
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 420px) {
+  .main-content {
+    padding: 8px 12px;
+  }
+
+  .daily-banner {
+    margin: 4px 12px;
+    width: calc(100% - 24px);
+    max-width: calc(100% - 24px);
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .banner-title {
+    display: none;
+  }
+
+  .banner-date {
+    font-size: 12px;
+  }
+
+  .banner-stats {
+    gap: 6px;
+  }
+
+  .banner-stat-label {
+    font-size: 10px;
+  }
+
+  .banner-stat-value {
+    font-size: 12px;
+  }
+
+  .timeline-time-col {
+    width: 40px;
+    font-size: 11px;
+    padding-right: 8px;
+  }
+
+  .timeline-content-col {
+    max-width: calc(100% - 40px);
+    padding-left: 6px;
+  }
+
+  .appointment-card.compact {
+    padding: 7px 8px;
+    gap: 3px;
+  }
+
+  .compact-time {
+    font-size: 12px;
+  }
+
+  .compact-client-name {
+    font-size: 13px;
+  }
+
+  .compact-price {
+    font-size: 12px;
+  }
+
+  .compact-services-text {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 360px) {
+  .main-content {
+    padding: 6px 8px;
+  }
+
+  .daily-banner {
+    margin: 4px 8px;
+    width: calc(100% - 16px);
+    max-width: calc(100% - 16px);
+    padding: 5px 8px;
+  }
+
+  .timeline-time-col {
+    width: 36px;
+    font-size: 10.5px;
+    padding-right: 6px;
+  }
+
+  .timeline-content-col {
+    max-width: calc(100% - 36px);
+    padding-left: 5px;
+  }
+
+  .schedule-dropdown {
+    font-size: 11px;
+    padding: 6px 16px 6px 4px;
+    background-position: right 4px center;
+  }
 }

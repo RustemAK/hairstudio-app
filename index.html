@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=25">
+  <link rel="stylesheet" href="css/style.css?v=26">
 </head>
 <body>
 
@@ -76,21 +76,21 @@
 
       <!-- Schedule Header Controls (Mobile Dropdowns & Density Switcher) -->
       <div class="schedule-toolbar">
-        <div class="toolbar-item" style="flex: 1.2;">
-          <select id="appointmentStatusFilter" class="schedule-dropdown">
+        <div class="toolbar-item filter-item">
+          <select id="appointmentStatusFilter" class="schedule-dropdown" aria-label="Фильтр по статусу">
             <option value="all">🔍 Все статусы</option>
             <option value="scheduled">🟡 Запланировано</option>
             <option value="completed">🟢 Выполнено</option>
             <option value="cancelled">🔴 Отменено</option>
           </select>
         </div>
-        <div class="toolbar-item" style="flex: 1;">
-          <select id="scheduleViewSelect" class="schedule-dropdown">
+        <div class="toolbar-item view-item">
+          <select id="scheduleViewSelect" class="schedule-dropdown" aria-label="Режим отображения">
             <option value="timeline" selected>⏱ По часам</option>
             <option value="list">📋 Списком</option>
           </select>
         </div>
-        <button type="button" id="btnDensityToggle" class="btn-density-toggle is-compact" title="Переключить вид: Компактный / Подробный">
+        <button type="button" id="btnDensityToggle" class="btn-density-toggle is-compact" title="Переключить вид: Компактный / Подробный" aria-label="Переключить плотность записей">
           <span id="densityToggleIcon">⚡</span>
           <span id="densityToggleText">Компактно</span>
         </button>
@@ -632,6 +632,6 @@
 
   <!-- Scripts -->
   <script src="js/db.js?v=25"></script>
-  <script src="js/app.js?v=25"></script>
+  <script src="js/app.js?v=26"></script>
 </body>
 </html>
