@@ -724,15 +724,15 @@ body {
 
 .quick-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: center;
 }
 
 .btn-action-small {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
   background: var(--bg-card-hover);
   border: 1px solid var(--border-color);
   color: var(--text-main);
@@ -742,6 +742,7 @@ body {
   cursor: pointer;
   transition: var(--transition-fast);
   text-decoration: none;
+  font-size: 18px;
 }
 
 .btn-action-small.whatsapp {
@@ -1959,7 +1960,7 @@ input[type="number"] {
 .compact-quick-actions {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -1967,12 +1968,12 @@ input[type="number"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.06);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border-color);
-  font-size: 11px;
+  font-size: 16px;
   text-decoration: none;
   transition: all 0.15s ease;
   flex-shrink: 0;

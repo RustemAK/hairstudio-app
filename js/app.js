@@ -1033,7 +1033,7 @@ function renderSchedule() {
       const servicesSummary = (app.services || []).map(s => s.name).join(', ');
       const detailsArr = [];
       if (servicesSummary) detailsArr.push(servicesSummary);
-      if (app.materialsUsed) detailsArr.push('🧪 ' + app.materialsUsed);
+      if (app.materialsUsed) detailsArr.push('Расход: ' + app.materialsUsed);
       if (app.notes) detailsArr.push('📝 ' + app.notes);
       const detailsText = detailsArr.join(' • ');
 
@@ -1097,7 +1097,7 @@ function renderSchedule() {
 
         ${app.materialsUsed ? `
           <div class="materials-note">
-            🧪 <strong>Расход:</strong> ${app.materialsUsed}
+            <strong>Расход:</strong> ${app.materialsUsed}
           </div>
         ` : ''}
 
@@ -1831,7 +1831,7 @@ function openClientDetailsModal(client, clientApps) {
         <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
           ${(a.services || []).map(s => s.name).join(', ')}
         </div>
-        ${a.materialsUsed ? `<div style="font-size: 11px; color: var(--accent-gold); margin-top: 2px;">🧪 ${a.materialsUsed}</div>` : ''}
+        ${a.materialsUsed ? `<div style="font-size: 11px; color: var(--accent-gold); margin-top: 2px;">Расход: ${a.materialsUsed}</div>` : ''}
       `;
       item.addEventListener('click', () => {
         closeModal('modalClientDetails');
