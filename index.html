@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
 
@@ -296,9 +296,9 @@
             <div style="margin-bottom: 8px;">
               <input type="text" id="appClientName" class="form-input" placeholder="Имя клиента *" autocomplete="off">
             </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input type="tel" id="appClientPhone" class="form-input" placeholder="Номер телефона (+7 ...)" style="flex: 1;">
-              <button type="button" id="btnPastePhone" class="btn-secondary" style="padding: 10px 12px; font-size: 12px; white-space: nowrap;" title="Вставить скопированный номер из буфера">
+            <div style="display: flex; gap: 8px; align-items: center; width: 100%; max-width: 100%; box-sizing: border-box;">
+              <input type="tel" id="appClientPhone" class="form-input" placeholder="Номер телефона (+7 ...)" style="flex: 1 1 0; min-width: 0;">
+              <button type="button" id="btnPastePhone" class="btn-secondary" style="padding: 10px 12px; font-size: 12px; white-space: nowrap; flex-shrink: 0;" title="Вставить скопированный номер из буфера">
                 📋 Вставить
               </button>
             </div>
@@ -557,7 +557,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/db.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/db.js?v=14"></script>
+  <script src="js/app.js?v=14"></script>
 </body>
 </html>
