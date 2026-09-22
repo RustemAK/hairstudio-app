@@ -158,6 +158,50 @@
   border-color: rgba(225, 29, 72, 0.25);
 }
 
+[data-theme="light"] .materials-note {
+  color: #1e293b;
+  background: rgba(217, 119, 6, 0.09);
+  border-left-color: var(--accent-gold);
+}
+
+[data-theme="light"] .channel-badge.phone {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: #1d4ed8;
+}
+
+[data-theme="light"] .channel-badge.whatsapp {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #047857;
+}
+
+[data-theme="light"] .btn-action-small.whatsapp {
+  color: #059669;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+[data-theme="light"] .btn-action-small.call {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+[data-theme="light"] .empty-services-hint {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="light"] .client-formula-box {
+  background: rgba(217, 119, 6, 0.08);
+  color: #1e293b;
+}
+
+[data-theme="light"] strong {
+  color: var(--text-main);
+}
+
 .theme-choice-btn {
   transition: var(--transition-fast);
 }
@@ -576,7 +620,7 @@ body {
 
 .materials-note {
   font-size: 12px;
-  color: #e2e8f0;
+  color: var(--text-main);
   background: rgba(245, 158, 11, 0.08);
   border-left: 2px solid var(--accent-gold);
   padding: 6px 10px;
