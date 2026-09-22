@@ -63,6 +63,7 @@ html, body {
   line-height: 1.5;
   overflow-x: hidden !important;
   overscroll-behavior-x: none;
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -74,6 +75,8 @@ body {
   min-height: 100dvh;
   max-width: 100vw;
   overflow-x: hidden !important;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: calc(75px + env(safe-area-inset-bottom, 12px));
   background-image: 
@@ -463,17 +466,25 @@ body {
   border-top: 1px solid var(--border-color);
   padding-top: 10px;
   margin-top: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .price-tag {
   font-size: 18px;
   font-weight: 800;
   color: var(--accent-gold-light);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .quick-actions {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .btn-action-small {
@@ -775,7 +786,8 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  overflow-x: hidden;
+  overflow-x: hidden !important;
+  touch-action: pan-y !important;
   box-sizing: border-box;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.7);
   transform: translateY(100%);
@@ -800,7 +812,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
   box-sizing: border-box;
@@ -827,10 +839,11 @@ body {
 }
 
 .modal-body {
-  padding: 16px 20px;
+  padding: 16px 16px;
   overflow-y: auto;
   overflow-x: hidden !important;
   overscroll-behavior-x: none;
+  touch-action: pan-y !important;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -840,7 +853,7 @@ body {
 }
 
 .modal-footer {
-  padding: 14px 20px;
+  padding: 14px 16px;
   border-top: 1px solid var(--border-color);
   display: flex;
   gap: 12px;
@@ -888,6 +901,40 @@ form {
   min-width: 0;
   box-sizing: border-box;
   transition: var(--transition-fast);
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* iOS Safari & Android date/time picker alignment & sizing */
+input[type="date"],
+input[type="time"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  display: block;
+}
+
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-height: 1.2em;
+  padding: 0;
+  margin: 0;
+}
+
+/* Remove number spinner arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 .form-input:focus, .form-select:focus, .form-textarea:focus {
@@ -900,18 +947,17 @@ form {
   resize: vertical;
 }
 
-.form-row {
+.form-row, .time-row {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
 }
 
-.form-row > * {
+.form-row > *, .time-row > * {
   flex: 1 1 0;
   min-width: 0;
-}
 }
 
 /* Services Select List inside Modal */

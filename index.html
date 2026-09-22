@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/style.css?v=16">
 </head>
 <body>
 
@@ -319,14 +319,19 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Дата *</label>
-            <input type="date" id="appDate" class="form-input" required>
-          </div>
+        <div class="form-group">
+          <label class="form-label">Дата записи *</label>
+          <input type="date" id="appDate" class="form-input" required>
+        </div>
+
+        <div class="form-row time-row">
           <div class="form-group">
             <label class="form-label">Время начала *</label>
             <input type="time" id="appStartTime" class="form-input" value="10:00" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Время окончания</label>
+            <input type="time" id="appEndTime" class="form-input" value="11:00">
           </div>
         </div>
 
@@ -341,15 +346,9 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Итоговая цена (₸) *</label>
-            <input type="number" id="appTotalPrice" class="form-input" min="0" step="50" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Время окончания</label>
-            <input type="time" id="appEndTime" class="form-input" value="11:00">
-          </div>
+        <div class="form-group">
+          <label class="form-label">Итоговая цена (₸) *</label>
+          <input type="number" id="appTotalPrice" class="form-input" min="0" step="50" placeholder="0 ₸" required>
         </div>
 
         <div class="form-group">
@@ -557,7 +556,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/db.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="js/db.js?v=16"></script>
+  <script src="js/app.js?v=16"></script>
 </body>
 </html>
