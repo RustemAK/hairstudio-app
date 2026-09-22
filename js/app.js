@@ -153,6 +153,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupDateStrip();
     setupServiceWorker();
     restoreActiveTabAndScroll();
+    await checkAndRunAutoBackup();
   } catch (err) {
     console.error('Initialization error:', err);
     showToast('Ошибка инициализации базы данных', 'error');
@@ -440,6 +441,7 @@ function setupEventListeners() {
 
   // Settings button
   document.getElementById('btnSettings').addEventListener('click', () => {
+    updateAutoBackupUI();
     openModal('modalSettings');
   });
 
@@ -506,6 +508,30 @@ function setupEventListeners() {
 
   // Auto calculate end time on start time change
   document.getElementById('appStartTime').addEventListener('change', recalcAppointmentEndTime);
+
+  // Auto-backup listeners
+  const intervalSelect = document.getElementById('settingAutoBackupInterval');
+  if (intervalSelect) {
+    intervalSelect.addEventListener('change', (e) => {
+      safeStorage.set('hairstudio_autobackup_interval', e.target.value);
+      showToast('Периодичность автокопирования сохранена');
+      checkAndRunAutoBackup();
+    });
+  }
+
+  const btnMakeBackup = document.getElementById('btnMakeAutoBackupNow');
+  if (btnMakeBackup) {
+    btnMakeBackup.addEventListener('click', async () => {
+      btnMakeBackup.disabled = true;
+      await createAutoBackup(false);
+      btnMakeBackup.disabled = false;
+    });
+  }
+
+  const btnRestoreAuto = document.getElementById('btnRestoreAutoBackup');
+  if (btnRestoreAuto) {
+    btnRestoreAuto.addEventListener('click', restoreFromAutoBackup);
+  }
 
   // Studio / Master name save listener
   const btnSaveName = document.getElementById('btnSaveStudioName');
@@ -1493,7 +1519,148 @@ function renderFinance() {
   }
 }
 
-// ================= BACKUP & RESTORE =================
+// ================= BACKUP & RESTORE (WHATSAPP-STYLE AUTO BACKUP) =================
+async function checkAndRunAutoBackup() {
+  updateAutoBackupUI();
+
+  const interval = safeStorage.get('hairstudio_autobackup_interval', 'weekly');
+  if (interval === 'off') return;
+
+  const lastBackup = safeStorage.get('hairstudio_last_backup_time');
+  const now = Date.now();
+  let needBackup = false;
+
+  if (!lastBackup) {
+    needBackup = true;
+  } else {
+    const lastTime = new Date(lastBackup).getTime();
+    if (isNaN(lastTime)) {
+      needBackup = true;
+    } else {
+      const diffMs = now - lastTime;
+      if (interval === 'daily' && diffMs >= 24 * 60 * 60 * 1000) {
+        needBackup = true;
+      } else if (interval === 'weekly' && diffMs >= 7 * 24 * 60 * 60 * 1000) {
+        needBackup = true;
+      } else if (interval === 'monthly' && diffMs >= 30 * 24 * 60 * 60 * 1000) {
+        needBackup = true;
+      }
+    }
+  }
+
+  if (needBackup) {
+    await createAutoBackup(true); // silent in background
+  }
+}
+
+async function createAutoBackup(silent = false) {
+  try {
+    const jsonString = await window.db.exportAllData();
+    safeStorage.set('hairstudio_autobackup_data', jsonString);
+    const nowIso = new Date().toISOString();
+    safeStorage.set('hairstudio_last_backup_time', nowIso);
+
+    const meta = {
+      appointmentsCount: (state.appointments || []).length,
+      clientsCount: (state.clients || []).length,
+      servicesCount: (state.services || []).length,
+      expensesCount: (state.expenses || []).length,
+      timestamp: nowIso
+    };
+    safeStorage.set('hairstudio_last_backup_meta', JSON.stringify(meta));
+    updateAutoBackupUI();
+
+    if (!silent) {
+      showToast('Автокопия сохранена на устройстве!');
+    }
+  } catch (err) {
+    console.error('AutoBackup error:', err);
+    if (!silent) {
+      showToast('Ошибка при создании автокопии', 'error');
+    }
+  }
+}
+
+async function restoreFromAutoBackup() {
+  const backupJson = safeStorage.get('hairstudio_autobackup_data');
+  if (!backupJson) {
+    showToast('Автокопия не найдена', 'error');
+    return;
+  }
+
+  const metaStr = safeStorage.get('hairstudio_last_backup_meta');
+  let dateStr = 'сохраненной копии';
+  if (metaStr) {
+    try {
+      const meta = JSON.parse(metaStr);
+      if (meta.timestamp) {
+        const d = new Date(meta.timestamp);
+        dateStr = `${d.toLocaleDateString('ru-RU')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+    } catch (e) {}
+  }
+
+  if (confirm(`Восстановить данные из автокопии от ${dateStr}?\n\nВсе текущие записи будут заменены данными из резервной копии.`)) {
+    try {
+      await window.db.importAllData(backupJson);
+      showToast('Данные успешно восстановлены из автокопии!');
+      closeModal('modalSettings');
+      await reloadData();
+    } catch (err) {
+      console.error('Restore error:', err);
+      showToast('Ошибка восстановления из автокопии', 'error');
+    }
+  }
+}
+
+function updateAutoBackupUI() {
+  const intervalSelect = document.getElementById('settingAutoBackupInterval');
+  if (intervalSelect) {
+    intervalSelect.value = safeStorage.get('hairstudio_autobackup_interval', 'weekly');
+  }
+
+  const dateLabel = document.getElementById('autoBackupDateLabel');
+  const metaLabel = document.getElementById('autoBackupMetaLabel');
+  const btnRestore = document.getElementById('btnRestoreAutoBackup');
+
+  const lastBackup = safeStorage.get('hairstudio_last_backup_time');
+  const hasData = !!safeStorage.get('hairstudio_autobackup_data');
+
+  if (btnRestore) {
+    btnRestore.disabled = !hasData;
+    btnRestore.style.opacity = hasData ? '1' : '0.5';
+    btnRestore.style.cursor = hasData ? 'pointer' : 'not-allowed';
+  }
+
+  if (!lastBackup || !hasData) {
+    if (dateLabel) dateLabel.innerText = 'Не создавалась';
+    if (metaLabel) metaLabel.innerText = 'Нажмите «Создать сейчас» для первого снимка';
+    return;
+  }
+
+  const d = new Date(lastBackup);
+  if (isNaN(d.getTime())) {
+    if (dateLabel) dateLabel.innerText = 'Не создавалась';
+    return;
+  }
+
+  const isToday = new Date().toDateString() === d.toDateString();
+  const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const formattedDate = isToday ? `Сегодня, ${timeStr}` : `${d.toLocaleDateString('ru-RU')}, ${timeStr}`;
+
+  if (dateLabel) dateLabel.innerText = formattedDate;
+
+  const metaStr = safeStorage.get('hairstudio_last_backup_meta');
+  if (metaLabel && metaStr) {
+    try {
+      const meta = JSON.parse(metaStr);
+      metaLabel.innerText = `Записей: ${meta.appointmentsCount || 0} • Клиентов: ${meta.clientsCount || 0} • Услуг: ${meta.servicesCount || 0}`;
+    } catch (e) {
+      metaLabel.innerText = '';
+    }
+  }
+}
+
 async function handleExportBackup() {
   try {
     const jsonString = await window.db.exportAllData();

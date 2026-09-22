@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=20">
+  <link rel="stylesheet" href="css/style.css?v=21">
 </head>
 <body>
 
@@ -555,18 +555,50 @@
           </p>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Резервное копирование (Backup)</label>
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+          <label class="form-label">Автоматическое резервное копирование</label>
           <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
-            Сохраните все свои записи, услуги, расходы и клиентов в один файл на телефон.
+            Создает защищенный снимок всех записей, клиентов и расходов прямо на устройстве.
           </p>
-          <button id="btnExportBackup" class="btn-secondary">💾 Скачать резервную копию (JSON)</button>
+
+          <label class="form-label" style="font-size: 11px; text-transform: uppercase; color: var(--text-subtle); margin-bottom: 4px;">Периодичность (как в WhatsApp):</label>
+          <select id="settingAutoBackupInterval" class="form-select" style="margin-bottom: 8px;">
+            <option value="daily">Каждый день (Ежедневно)</option>
+            <option value="weekly" selected>Раз в неделю (Еженедельно)</option>
+            <option value="monthly">Раз в месяц (Ежемесячно)</option>
+            <option value="off">Отключено (только вручную)</option>
+          </select>
+
+          <!-- Статус последней копии -->
+          <div id="autoBackupStatusBox" style="background: var(--bg-input); padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); font-size: 12px; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: var(--text-muted);">Последняя автокопия:</span>
+              <span id="autoBackupDateLabel" style="font-weight: 600; color: var(--text-main);">Не создавалась</span>
+            </div>
+            <div id="autoBackupMetaLabel" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;"></div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btnMakeAutoBackupNow" class="btn-secondary" style="flex: 1; padding: 10px; font-size: 13px;">
+                ⚡ Создать сейчас
+              </button>
+              <button type="button" id="btnRestoreAutoBackup" class="btn-secondary" style="flex: 1; padding: 10px; font-size: 13px;" disabled>
+                ↺ Восстановить
+              </button>
+            </div>
+            <button type="button" id="btnExportBackup" class="btn-secondary" style="width: 100%; padding: 10px; font-size: 13px;">
+              💾 Скачать файл копии на телефон (JSON)
+            </button>
+          </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">Восстановление из резервной копии</label>
+        <div class="form-group" style="margin-top: 6px;">
+          <label class="form-label">Восстановление из файла</label>
           <input type="file" id="importFileInput" accept=".json" style="display: none;">
-          <button id="btnImportBackup" class="btn-secondary">📂 Загрузить файл резервной копии</button>
+          <button type="button" id="btnImportBackup" class="btn-secondary" style="width: 100%; padding: 10px; font-size: 13px;">
+            📂 Загрузить файл резервной копии
+          </button>
         </div>
 
         <div class="form-group" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 16px;">
@@ -578,7 +610,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/db.js?v=20"></script>
-  <script src="js/app.js?v=20"></script>
+  <script src="js/db.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
 </body>
 </html>
