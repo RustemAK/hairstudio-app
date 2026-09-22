@@ -1,5 +1,5 @@
 // HairStudio PWA Service Worker
-const CACHE_NAME = 'hairstudio-cache-v5';
+const CACHE_NAME = 'hairstudio-cache-v6';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

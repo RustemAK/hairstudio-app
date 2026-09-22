@@ -1034,6 +1034,14 @@ function renderSchedule() {
       </div>
     `;
 
+    // Make the entire appointment card clickable to enter edit mode
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.quick-actions') || e.target.closest('button') || e.target.closest('a')) {
+        return;
+      }
+      openAppointmentModal(app);
+    });
+
     const btnComplete = card.querySelector('.btn-complete-app');
     if (btnComplete) {
       btnComplete.addEventListener('click', async (e) => {
@@ -1046,9 +1054,18 @@ function renderSchedule() {
       });
     }
 
-    card.querySelector('.btn-edit-app').addEventListener('click', (e) => {
-      e.stopPropagation();
-      openAppointmentModal(app);
+    const btnEdit = card.querySelector('.btn-edit-app');
+    if (btnEdit) {
+      btnEdit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAppointmentModal(app);
+      });
+    }
+
+    card.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
     });
 
     return card;
@@ -1732,7 +1749,8 @@ function openClientDetailsModal(client, clientApps) {
     clientApps.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     clientApps.forEach(a => {
       const item = document.createElement('div');
-      item.style.cssText = 'background: var(--bg-card); padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); font-size: 13px;';
+      item.style.cssText = 'background: var(--bg-card); padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); font-size: 13px; cursor: pointer; transition: transform 0.15s, border-color 0.15s;';
+      item.title = 'Нажмите для редактирования записи';
       item.innerHTML = `
         <div style="display: flex; justify-content: space-between; font-weight: 600;">
           <span>${formatDisplayDate(a.date)} ${a.startTime}</span>
@@ -1743,6 +1761,10 @@ function openClientDetailsModal(client, clientApps) {
         </div>
         ${a.materialsUsed ? `<div style="font-size: 11px; color: var(--accent-gold); margin-top: 2px;">🧪 ${a.materialsUsed}</div>` : ''}
       `;
+      item.addEventListener('click', () => {
+        closeModal('modalClientDetails');
+        openAppointmentModal(a);
+      });
       histBox.appendChild(item);
     });
   }
