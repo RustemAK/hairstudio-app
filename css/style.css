@@ -344,44 +344,49 @@ body {
 
 /* Quick Daily Banner */
 .daily-banner {
-  padding: 14px 18px;
-  margin: 12px 16px 6px;
+  padding: 8px 14px;
+  margin: 6px 16px 4px;
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   backdrop-filter: blur(12px);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-sm);
 }
 
 .banner-left {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .banner-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-gold);
   text-transform: uppercase;
   letter-spacing: 0.6px;
 }
 
 .banner-date {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-main);
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .banner-stats {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
 }
 
 .banner-stat-item {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
   text-align: right;
 }
 
@@ -391,7 +396,7 @@ body {
 }
 
 .banner-stat-value {
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--accent-gold-light);
 }
@@ -1336,9 +1341,57 @@ input[type="number"] {
 /* Schedule Mobile Toolbar */
 .schedule-toolbar {
   display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
   width: 100%;
+}
+
+.btn-density-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-density-toggle:hover {
+  border-color: var(--accent-gold);
+  background: rgba(212, 163, 115, 0.08);
+}
+
+.btn-density-toggle:active {
+  transform: scale(0.96);
+}
+
+.btn-density-toggle.is-compact {
+  background: rgba(212, 163, 115, 0.12);
+  border-color: var(--accent-gold);
+  color: var(--accent-gold-light);
+}
+
+[data-theme="light"] .btn-density-toggle {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.15);
+  color: #1e293b;
+}
+
+[data-theme="light"] .btn-density-toggle.is-compact {
+  background: rgba(180, 83, 9, 0.08);
+  border-color: rgba(180, 83, 9, 0.4);
+  color: #b45309;
 }
 
 .toolbar-item {
@@ -1496,17 +1549,7 @@ input[type="number"] {
 
 /* Quick Actions Legend */
 .actions-legend {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  gap: 6px;
-  padding: 7px 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-md);
-  margin-bottom: 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  display: none !important;
 }
 
 .legend-item {
@@ -1672,3 +1715,160 @@ input[type="number"] {
   word-break: break-word;
 }
 
+
+
+/* ================= COMPACT APPOINTMENT CARD ================= */
+.appointment-card.compact {
+  padding: 10px 14px;
+  gap: 5px;
+}
+
+.compact-row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.compact-time-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.compact-time {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-gold-light);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-theme="light"] .compact-time {
+  color: #b45309;
+}
+
+.compact-client-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-channel-icon,
+.compact-note-indicator {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.compact-price-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.compact-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.compact-status-badge {
+  font-size: 12px;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+}
+
+.compact-status-badge.completed {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--status-completed);
+}
+
+.compact-status-badge.cancelled {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--status-cancelled);
+}
+
+.compact-row-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+}
+
+.compact-services-text {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.compact-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.compact-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  font-size: 12px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.compact-mini-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: scale(1.06);
+}
+
+.compact-mini-btn.whatsapp {
+  background: rgba(37, 211, 102, 0.12);
+  border-color: rgba(37, 211, 102, 0.25);
+}
+
+.compact-mini-btn.call {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+/* Compact Timeline tweaks */
+.timeline-container.compact .timeline-empty-slot {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.timeline-container.compact .timeline-empty-slot .empty-slot-plus {
+  font-size: 13px;
+}
+
+.timeline-container.compact .timeline-time-col {
+  padding-top: 6px;
+  font-size: 12px;
+}

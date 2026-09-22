@@ -5,6 +5,7 @@
 
 // ================= STATE =================
 const state = {
+  cardDensity: 'compact',
   activeTab: 'schedule',
   selectedDate: new Date().toISOString().split('T')[0],
   scheduleFilter: 'all',
@@ -445,7 +446,22 @@ function toggleTheme() {
   showToast(newTheme === 'light' ? 'Включена светлая тема' : 'Включена тёмная тема');
 }
 
+function updateDensityToggleUI() {
+  const btn = document.getElementById('btnDensityToggle');
+  const icon = document.getElementById('densityToggleIcon');
+  const text = document.getElementById('densityToggleText');
+  if (!btn) return;
+  const isCompact = state.cardDensity === 'compact';
+  btn.classList.toggle('is-compact', isCompact);
+  if (icon) icon.innerText = isCompact ? '⚡' : '📱';
+  if (text) text.innerText = isCompact ? 'Компактно' : 'Подробно';
+}
+
 function restoreSavedPreferences() {
+  // Restore card density (compact vs comfortable)
+  state.cardDensity = localStorage.getItem('hairstudio_card_density') || 'compact';
+  updateDensityToggleUI();
+
   // Restore theme
   const savedTheme = localStorage.getItem('hairstudio_theme') || 'dark';
   applyTheme(savedTheme);
@@ -594,6 +610,18 @@ function setupServiceWorker() {
 // ================= NAVIGATION & TABS =================
 function setupEventListeners() {
   setupModalSwipeGestures();
+
+  // Density switcher (Compact vs Comfortable)
+  const btnDensity = document.getElementById('btnDensityToggle');
+  if (btnDensity) {
+    btnDensity.addEventListener('click', () => {
+      state.cardDensity = state.cardDensity === 'compact' ? 'comfortable' : 'compact';
+      localStorage.setItem('hairstudio_card_density', state.cardDensity);
+      updateDensityToggleUI();
+      renderSchedule();
+      showToast(state.cardDensity === 'compact' ? '⚡ Компактный вид' : '📱 Подробный вид');
+    });
+  }
 
   // Bottom nav tab switching
   document.querySelectorAll('.nav-item').forEach(btn => {
@@ -966,8 +994,9 @@ function renderSchedule() {
 
   // HELPER TO CREATE APPOINTMENT CARD ELEMENT
   function createAppointmentCard(app) {
+    const isCompact = state.cardDensity === 'compact';
     const card = document.createElement('div');
-    card.className = `appointment-card status-${app.status}`;
+    card.className = `appointment-card status-${app.status}` + (isCompact ? ' compact' : '');
 
     const statusLabels = {
       scheduled: 'Запланировано',
@@ -975,68 +1004,104 @@ function renderSchedule() {
       cancelled: 'Отменено'
     };
 
-    // Services tags HTML
-    const servicesHtml = (app.services || []).map(s => `
-      <span class="service-tag">${s.name} (${s.price} ₸)</span>
-    `).join('');
-
-    // Phone actions
     const phoneClean = (app.clientPhone || '').replace(/\D/g, '');
     const waLink = phoneClean ? `https://wa.me/${phoneClean}` : null;
     const telLink = phoneClean ? `tel:+${phoneClean}` : null;
 
-    card.innerHTML = `
-      <div class="card-top">
-        <div class="time-slot">
-          🕒 ${app.startTime || '--:--'} — ${app.endTime || '--:--'}
-          ${app.channel === 'whatsapp' 
-            ? '<span class="channel-badge whatsapp" title="Запись через WhatsApp">💬 WhatsApp</span>' 
-            : '<span class="channel-badge phone" title="Запись по телефонному звонку">📞 Звонок</span>'}
+    if (isCompact) {
+      // COMPACT 2-LINE CARD
+      const servicesSummary = (app.services || []).map(s => s.name).join(', ');
+      const noteTooltip = [
+        app.materialsUsed ? 'Расход: ' + app.materialsUsed : '',
+        app.notes ? 'Заметка: ' + app.notes : ''
+      ].filter(Boolean).join(' | ');
+
+      card.innerHTML = `
+        <div class="compact-row-top">
+          <div class="compact-time-name">
+            <span class="compact-time">${app.startTime || '--:--'}–${app.endTime || '--:--'}</span>
+            <span class="compact-client-name" title="${app.clientName}">${app.clientName}</span>
+            ${app.channel === 'whatsapp' ? '<span class="compact-channel-icon" title="Запись через WhatsApp">💬</span>' : ''}
+            ${noteTooltip ? `<span class="compact-note-indicator" title="${noteTooltip}">📝</span>` : ''}
+          </div>
+          <div class="compact-price-status">
+            <span class="compact-price">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</span>
+            ${app.status === 'scheduled' ? `
+              <button class="btn-action-small complete btn-complete-app" title="Отметить выполненным" aria-label="Завершить запись">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </button>
+            ` : `<span class="compact-status-badge ${app.status}" title="${statusLabels[app.status]}">${app.status === 'completed' ? '✓' : '✕'}</span>`}
+          </div>
         </div>
-        <span class="badge-status ${app.status}">
-          ${statusLabels[app.status] || app.status}
-        </span>
-      </div>
 
-      <div class="card-client-info">
-        <div class="client-name">${app.clientName}</div>
-        ${app.clientPhone ? `<div class="client-phone">📞 ${app.clientPhone}</div>` : ''}
-      </div>
-
-      <div class="services-tags">
-        ${servicesHtml}
-      </div>
-
-      ${app.materialsUsed ? `
-        <div class="materials-note">
-          🧪 <strong>Расход:</strong> ${app.materialsUsed}
+        <div class="compact-row-bottom">
+          <div class="compact-services-text" title="${servicesSummary}">
+            ${servicesSummary || '<span style="opacity: 0.5;">Без услуг</span>'}
+          </div>
+          <div class="compact-quick-actions">
+            ${waLink ? `<a href="${waLink}" target="_blank" class="compact-mini-btn whatsapp" title="WhatsApp">💬</a>` : ''}
+            ${telLink ? `<a href="${telLink}" class="compact-mini-btn call" title="Позвонить">📞</a>` : ''}
+          </div>
         </div>
-      ` : ''}
+      `;
+    } else {
+      // COMFORTABLE DETAILED CARD
+      const servicesHtml = (app.services || []).map(s => `
+        <span class="service-tag">${s.name} (${s.price} ₸)</span>
+      `).join('');
 
-      ${app.notes ? `
-        <div class="materials-note" style="border-left-color: var(--accent-gold); margin-top: 4px;">
-          📝 ${app.notes}
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="time-slot">
+            🕒 ${app.startTime || '--:--'} — ${app.endTime || '--:--'}
+            ${app.channel === 'whatsapp' 
+              ? '<span class="channel-badge whatsapp" title="Запись через WhatsApp">💬 WhatsApp</span>' 
+              : '<span class="channel-badge phone" title="Запись по телефонному звонку">📞 Звонок</span>'}
+          </div>
+          <span class="badge-status ${app.status}">
+            ${statusLabels[app.status] || app.status}
+          </span>
         </div>
-      ` : ''}
 
-      <div class="card-footer">
-        <div class="price-tag">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</div>
-        <div class="quick-actions">
-          ${app.status === 'scheduled' ? `
-            <button class="btn-action-small complete btn-complete-app" title="Отметить выполненным" aria-label="Завершить запись">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </button>
-          ` : ''}
-          ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
-          ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
-          <button class="btn-action-small btn-edit-app" title="Редактировать">✏️</button>
+        <div class="card-client-info">
+          <div class="client-name">${app.clientName}</div>
+          ${app.clientPhone ? `<div class="client-phone">📞 ${app.clientPhone}</div>` : ''}
         </div>
-      </div>
-    `;
 
-    // Make the entire appointment card clickable to enter edit mode
+        <div class="services-tags">
+          ${servicesHtml}
+        </div>
+
+        ${app.materialsUsed ? `
+          <div class="materials-note">
+            🧪 <strong>Расход:</strong> ${app.materialsUsed}
+          </div>
+        ` : ''}
+
+        ${app.notes ? `
+          <div class="materials-note" style="border-left-color: var(--accent-gold); margin-top: 4px;">
+            📝 ${app.notes}
+          </div>
+        ` : ''}
+
+        <div class="card-footer">
+          <div class="price-tag">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</div>
+          <div class="quick-actions">
+            ${app.status === 'scheduled' ? `
+              <button class="btn-action-small complete btn-complete-app" title="Отметить выполненным" aria-label="Завершить запись">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </button>
+            ` : ''}
+            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
+            ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    // Common event listeners for both compact & comfortable modes
     card.addEventListener('click', (e) => {
-      if (e.target.closest('.quick-actions') || e.target.closest('button') || e.target.closest('a')) {
+      if (e.target.closest('.quick-actions') || e.target.closest('.compact-quick-actions') || e.target.closest('button') || e.target.closest('a')) {
         return;
       }
       openAppointmentModal(app);
@@ -1071,10 +1136,10 @@ function renderSchedule() {
     return card;
   }
 
-  // MODE 1: HOURLY TIMELINE / CALENDAR VIEW
+    // MODE 1: HOURLY TIMELINE / CALENDAR VIEW
   if (state.scheduleViewMode === 'timeline') {
     const timeline = document.createElement('div');
-    timeline.className = 'timeline-container';
+    timeline.className = 'timeline-container' + (state.cardDensity === 'compact' ? ' compact' : '');
 
     // Determine working hours (from master settings, or wider if earlier/later apps exist)
     let minHour = typeof state.workStartHour === 'number' ? state.workStartHour : 8;
@@ -1153,9 +1218,12 @@ function renderSchedule() {
         // Empty slot - click to add appointment at this time
         const emptySlot = document.createElement('div');
         emptySlot.className = 'timeline-empty-slot';
+        const emptySlotHint = state.cardDensity === 'compact'
+          ? `<span>Свободно на ${hourStr}</span>`
+          : `<span>Свободно на ${hourStr} <span style="font-size: 11px; opacity: 0.7;">(нажмите для записи)</span></span>`;
         emptySlot.innerHTML = `
           <span class="empty-slot-plus">+</span>
-          <span>Свободно на ${hourStr} <span style="font-size: 11px; opacity: 0.7;">(нажмите для записи)</span></span>
+          ${emptySlotHint}
         `;
         emptySlot.addEventListener('click', () => {
           openAppointmentModal(null, null, hourStr);
