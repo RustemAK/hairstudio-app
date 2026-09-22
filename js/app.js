@@ -29,7 +29,44 @@ const RU_MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', '
 const RU_DAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const RU_MONTHS_FULL = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
+// Safe storage wrapper for incognito & quota safety
+const safeStorage = {
+  get(key, fallback = null) {
+    try {
+      const val = localStorage.getItem(key);
+      return val !== null ? val : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  },
+  set(key, val) {
+    try {
+      localStorage.setItem(key, val);
+    } catch (e) {
+      console.warn('LocalStorage write failed:', e);
+    }
+  },
+  getSession(key, fallback = null) {
+    try {
+      const val = sessionStorage.getItem(key);
+      return val !== null ? val : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  },
+  setSession(key, val) {
+    try {
+      sessionStorage.setItem(key, val);
+    } catch (e) {
+      console.warn('SessionStorage write failed:', e);
+    }
+  }
+};
+
 function formatDateToYMD(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    date = new Date();
+  }
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -37,20 +74,31 @@ function formatDateToYMD(date) {
 }
 
 function formatDisplayDate(dateStr) {
-  const [y, m, d] = dateStr.split('-');
+  if (!dateStr || typeof dateStr !== 'string') return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const [y, m, d] = parts;
   const date = new Date(Number(y), Number(m) - 1, Number(d));
+  if (isNaN(date.getTime())) return dateStr;
   return `${date.getDate()} ${RU_MONTHS[date.getMonth()]}, ${RU_DAYS[date.getDay()]}`;
 }
 
 function formatFullDate(dateStr) {
-  const [y, m, d] = dateStr.split('-');
+  if (!dateStr || typeof dateStr !== 'string') return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const [y, m, d] = parts;
   const date = new Date(Number(y), Number(m) - 1, Number(d));
+  if (isNaN(date.getTime())) return dateStr;
   return `${date.getDate()} ${RU_MONTHS_FULL[date.getMonth()]} ${y}`;
 }
 
 function addMinutesToTime(timeStr, minutesToAdd) {
+  if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) {
+    timeStr = '10:00';
+  }
   const [h, m] = timeStr.split(':').map(Number);
-  const total = h * 60 + m + minutesToAdd;
+  const total = (isNaN(h) ? 10 : h) * 60 + (isNaN(m) ? 0 : m) + (Number(minutesToAdd) || 60);
   const newH = Math.floor(total / 60) % 24;
   const newM = total % 60;
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
