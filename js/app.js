@@ -1219,31 +1219,19 @@ function renderSchedule() {
         row.appendChild(contentCol);
         timeline.appendChild(row);
       } else {
-        // Group appointments by their exact startTime (e.g. 11:30 or 10:15)
-        const timeGroups = new Map();
+        // Each appointment gets its own row, its own exact time, and its own centered dot
         hourApps.forEach(app => {
-          const t = app.startTime || hourStr;
-          if (!timeGroups.has(t)) {
-            timeGroups.set(t, []);
-          }
-          timeGroups.get(t).push(app);
-        });
-
-        timeGroups.forEach((appsAtTime, timeKey) => {
           const row = document.createElement('div');
           row.className = 'timeline-hour-row';
 
-          const allPast = appsAtTime.every(isAppointmentPast);
+          const isPast = isAppointmentPast(app);
           const timeCol = document.createElement('div');
-          timeCol.className = 'timeline-time-col has-app' + (allPast ? ' is-past' : '');
-          timeCol.innerText = timeKey; // Exact appointment time on the left (e.g. 11:30)
+          timeCol.className = 'timeline-time-col has-app' + (isPast ? ' is-past' : '');
+          timeCol.innerText = app.startTime || hourStr;
 
           const contentCol = document.createElement('div');
           contentCol.className = 'timeline-content-col';
-
-          appsAtTime.forEach(app => {
-            contentCol.appendChild(createAppointmentCard(app));
-          });
+          contentCol.appendChild(createAppointmentCard(app));
 
           row.appendChild(timeCol);
           row.appendChild(contentCol);
