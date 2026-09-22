@@ -122,21 +122,44 @@ function showToast(message, type = 'success') {
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
+    // If not already active, push a history entry for iOS edge-swipe back support
+    if (!modal.classList.contains('active')) {
+      history.pushState({ modalOpen: modalId }, '', window.location.href);
+    }
     modal.classList.add('active');
+    const sheet = modal.querySelector('.modal-sheet');
+    if (sheet) {
+      sheet.style.transform = '';
+      sheet.style.transition = '';
+    }
+    modal.style.backgroundColor = '';
+    modal.style.transition = '';
   }
 }
 
-function closeModal(modalId) {
+function closeModal(modalId, syncHistory = true) {
   const modal = document.getElementById(modalId);
   if (modal) {
     modal.classList.remove('active');
+    const sheet = modal.querySelector('.modal-sheet');
+    if (sheet) {
+      sheet.style.transform = '';
+      sheet.style.transition = '';
+    }
+    modal.style.backgroundColor = '';
+    modal.style.transition = '';
+
+    // If modal was closed via UI, sync history so back button/swipe doesn't hit stale modal
+    if (syncHistory && history.state && history.state.modalOpen) {
+      history.back();
+    }
   }
 }
 
 // Close on backdrop click or close buttons
 document.addEventListener('click', (e) => {
   if (e.target.classList.contains('modal-backdrop')) {
-    e.target.classList.remove('active');
+    closeModal(e.target.id);
   }
   const closeBtn = e.target.closest('[data-close]');
   if (closeBtn) {
@@ -144,6 +167,204 @@ document.addEventListener('click', (e) => {
     closeModal(modalId);
   }
 });
+
+// ================= MODAL SWIPE-TO-CLOSE GESTURES =================
+function setupModalSwipeGestures() {
+  // Support iOS Safari edge swipe back and browser/hardware back button
+  window.addEventListener('popstate', () => {
+    const activeModal = document.querySelector('.modal-backdrop.active');
+    if (activeModal) {
+      closeModal(activeModal.id, false);
+    }
+  });
+
+  document.querySelectorAll('.modal-backdrop').forEach(modal => {
+    const sheet = modal.querySelector('.modal-sheet');
+    if (!sheet) return;
+
+    let startY = 0;
+    let startX = 0;
+    let startTime = 0;
+    let isDragging = false;
+    let isHeaderTouch = false;
+    let initialScrollTop = 0;
+
+    const onTouchStart = (e) => {
+      if (!modal.classList.contains('active')) return;
+      if (e.touches.length !== 1) return;
+
+      const target = e.target;
+      // Do not hijack taps on close button or clickable action buttons
+      if (target.closest('.modal-close') || target.closest('button')) {
+        isHeaderTouch = false;
+        return;
+      }
+
+      const touch = e.touches[0];
+      startY = touch.clientY;
+      startX = touch.clientX;
+      startTime = performance.now();
+      isDragging = false;
+
+      const handle = sheet.querySelector('.modal-handle');
+      const header = sheet.querySelector('.modal-header');
+      const modalBody = sheet.querySelector('.modal-body');
+
+      if ((handle && (target === handle || handle.contains(target))) ||
+          (header && (target === header || header.contains(target)))) {
+        isHeaderTouch = true;
+      } else {
+        isHeaderTouch = false;
+      }
+
+      initialScrollTop = modalBody ? modalBody.scrollTop : 0;
+    };
+
+    const onTouchMove = (e) => {
+      if (!modal.classList.contains('active')) return;
+      if (e.touches.length !== 1) return;
+
+      const touch = e.touches[0];
+      const deltaY = touch.clientY - startY;
+      const deltaX = touch.clientX - startX;
+
+      const modalBody = sheet.querySelector('.modal-body');
+      const currentScrollTop = modalBody ? modalBody.scrollTop : 0;
+
+      if (!isDragging) {
+        // Minimum movement required to classify gesture
+        if (Math.abs(deltaY) < 7 && Math.abs(deltaX) < 7) return;
+
+        // If predominantly horizontal, ignore to not interfere with text selection or horizontal swipes
+        if (Math.abs(deltaX) > Math.abs(deltaY)) return;
+
+        // If pulling UP, allow normal scrolling inside modal
+        if (deltaY <= 0) return;
+
+        // Pulling DOWN:
+        // Either touch started on handle/header, OR started at top of body and is at top
+        if (isHeaderTouch || (initialScrollTop <= 0 && currentScrollTop <= 0)) {
+          isDragging = true;
+          // Hide mobile keyboard if open to prevent viewport jumping on iPhone
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
+        } else {
+          return;
+        }
+      }
+
+      if (isDragging) {
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+
+        // Apply downward translation
+        const translateY = Math.max(0, deltaY);
+        sheet.style.transition = 'none';
+        sheet.style.transform = `translateY(${translateY}px)`;
+
+        // Backdrop opacity tracks pull down distance
+        const sheetHeight = sheet.offsetHeight || 500;
+        const progress = Math.min(1, translateY / sheetHeight);
+        modal.style.transition = 'none';
+        modal.style.backgroundColor = `rgba(0, 0, 0, ${Math.max(0, 0.7 * (1 - progress * 0.75))})`;
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+
+      const touch = e.changedTouches ? e.changedTouches[0] : e;
+      const deltaY = touch.clientY - startY;
+      const duration = performance.now() - startTime;
+      const velocityY = deltaY / Math.max(1, duration);
+      const sheetHeight = sheet.offsetHeight || 500;
+
+      // Dismiss if dragged down > 20% of sheet height OR fast flick downwards (> 0.38 px/ms)
+      const shouldDismiss = deltaY > sheetHeight * 0.2 || (deltaY > 60 && velocityY > 0.38);
+
+      if (shouldDismiss) {
+        // Animate out smoothly
+        sheet.style.transition = 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)';
+        sheet.style.transform = 'translateY(100%)';
+        modal.style.transition = 'background-color 0.22s ease-out';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0)';
+
+        setTimeout(() => {
+          closeModal(modal.id);
+          sheet.style.transform = '';
+          sheet.style.transition = '';
+          modal.style.backgroundColor = '';
+          modal.style.transition = '';
+        }, 220);
+      } else {
+        // Snap back to open position
+        sheet.style.transition = 'transform 0.26s cubic-bezier(0.16, 1, 0.3, 1)';
+        sheet.style.transform = 'translateY(0)';
+        modal.style.transition = 'background-color 0.26s ease-out';
+        modal.style.backgroundColor = '';
+
+        setTimeout(() => {
+          sheet.style.transform = '';
+          sheet.style.transition = '';
+          modal.style.backgroundColor = '';
+          modal.style.transition = '';
+        }, 260);
+      }
+    };
+
+    sheet.addEventListener('touchstart', onTouchStart, { passive: true });
+    sheet.addEventListener('touchmove', onTouchMove, { passive: false });
+    sheet.addEventListener('touchend', onTouchEnd);
+    sheet.addEventListener('touchcancel', onTouchEnd);
+
+    // Mouse drag support for header/handle on desktop
+    const handle = sheet.querySelector('.modal-handle');
+    const header = sheet.querySelector('.modal-header');
+    [handle, header].forEach(el => {
+      if (!el) return;
+      el.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.modal-close') || e.target.closest('button')) return;
+        if (e.button !== 0) return;
+
+        startY = e.clientY;
+        startX = e.clientX;
+        startTime = performance.now();
+        isDragging = false;
+        isHeaderTouch = true;
+        initialScrollTop = 0;
+
+        const onMouseMove = (moveEvent) => {
+          const deltaY = moveEvent.clientY - startY;
+          if (!isDragging && deltaY > 6) {
+            isDragging = true;
+          }
+          if (isDragging) {
+            const translateY = Math.max(0, deltaY);
+            sheet.style.transition = 'none';
+            sheet.style.transform = `translateY(${translateY}px)`;
+            const sheetHeight = sheet.offsetHeight || 500;
+            const progress = Math.min(1, translateY / sheetHeight);
+            modal.style.transition = 'none';
+            modal.style.backgroundColor = `rgba(0, 0, 0, ${Math.max(0, 0.7 * (1 - progress * 0.75))})`;
+          }
+        };
+
+        const onMouseUp = (upEvent) => {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          if (!isDragging) return;
+          onTouchEnd({ changedTouches: [{ clientY: upEvent.clientY }] });
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    });
+  });
+}
 
 // ================= INITIALIZATION =================
 document.addEventListener('DOMContentLoaded', async () => {
@@ -298,6 +519,9 @@ function populateWorkHourSelects() {
 }
 
 function restoreActiveTabAndScroll() {
+  if (history.state && history.state.modalOpen) {
+    history.replaceState(null, '', window.location.href);
+  }
   const hashTab = window.location.hash.replace('#', '');
   const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
   const savedTab = (hashTab && validTabs.includes(hashTab))
@@ -369,6 +593,8 @@ function setupServiceWorker() {
 
 // ================= NAVIGATION & TABS =================
 function setupEventListeners() {
+  setupModalSwipeGestures();
+
   // Bottom nav tab switching
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
