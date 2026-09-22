@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=27">
+  <link rel="stylesheet" href="css/style.css?v=28">
 </head>
 <body>
 
@@ -76,7 +76,7 @@
 
       <!-- Schedule Header Controls (Mobile Dropdowns & Density Switcher) -->
       <div class="schedule-toolbar">
-        <div class="toolbar-item filter-item">
+        <div class="toolbar-item filter-item" style="display: none;">
           <select id="appointmentStatusFilter" class="schedule-dropdown" aria-label="Фильтр по статусу">
             <option value="all">🔍 Все статусы</option>
             <option value="scheduled">🟡 Запланировано</option>
@@ -98,10 +98,7 @@
 
       <!-- Quick Actions Legend (Подсказка по кнопкам карточки) -->
       <div class="actions-legend">
-        <div class="legend-item" title="Отметить визит выполненным и оплаченным в 1 клик">
-          <span class="legend-icon complete">✓</span>
-          <span>Завершить</span>
-        </div>
+
         <div class="legend-item" title="Написать клиенту в WhatsApp">
           <span class="legend-icon whatsapp">💬</span>
           <span>WhatsApp</span>
@@ -370,7 +367,7 @@
           <textarea id="appNotes" class="form-textarea" placeholder="Особенности волос, прошлая формула, пожелания..."></textarea>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" style="display: none;">
           <label class="form-label">Статус записи</label>
           <select id="appStatus" class="form-select">
             <option value="scheduled">🟡 Запланировано</option>
@@ -636,6 +633,6 @@
 
   <!-- Scripts -->
   <script src="js/db.js?v=25"></script>
-  <script src="js/app.js?v=27"></script>
+  <script src="js/app.js?v=28"></script>
 </body>
 </html>

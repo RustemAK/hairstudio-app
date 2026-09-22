@@ -76,6 +76,31 @@ function formatDateToYMD(date) {
   return `${y}-${m}-${d}`;
 }
 
+function isAppointmentPast(app) {
+  if (!app || !app.date) return false;
+  const now = new Date();
+  const todayStr = formatDateToYMD(now);
+
+  if (app.date < todayStr) return true;
+  if (app.date > todayStr) return false;
+
+  // Same day: compare check time (endTime or startTime) with current time
+  const curHours = String(now.getHours()).padStart(2, '0');
+  const curMins = String(now.getMinutes()).padStart(2, '0');
+  const curTime = `${curHours}:${curMins}`;
+
+  const checkTime = app.endTime || app.startTime;
+  if (!checkTime) return false;
+  return checkTime <= curTime;
+}
+
+function isAppointmentCompleted(app) {
+  if (!app) return false;
+  if (app.status === 'cancelled') return false;
+  return app.status === 'completed' || isAppointmentPast(app);
+}
+
+
 function formatDisplayDate(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return '';
   const parts = dateStr.split('-');
@@ -478,7 +503,7 @@ function restoreSavedPreferences() {
   // Restore schedule status filter
   const savedStatusFilter = localStorage.getItem('hairstudio_schedule_filter');
   if (savedStatusFilter) {
-    state.scheduleFilter = savedStatusFilter;
+    state.scheduleFilter = 'all';
   }
 
   // Restore finance period
@@ -920,7 +945,7 @@ function renderTodayBanner() {
   document.getElementById('bannerTodayDate').innerText = formatFullDate(todayStr);
 
   const todayApps = state.appointments.filter(a => a.date === todayStr);
-  const completedToday = todayApps.filter(a => a.status === 'completed');
+  const completedToday = todayApps.filter(isAppointmentCompleted);
   const revenue = completedToday.reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
 
   document.getElementById('bannerTodayCount').innerText = todayApps.length;
@@ -995,22 +1020,23 @@ function renderSchedule() {
   // HELPER TO CREATE APPOINTMENT CARD ELEMENT
   function createAppointmentCard(app) {
     const isCompact = state.cardDensity === 'compact';
+    const isPast = isAppointmentPast(app);
     const card = document.createElement('div');
-    card.className = `appointment-card status-${app.status}` + (isCompact ? ' compact' : '');
-
-    const statusLabels = {
-      scheduled: 'Запланировано',
-      completed: 'Выполнено',
-      cancelled: 'Отменено'
-    };
+    card.className = 'appointment-card' + (isPast ? ' is-past' : '') + (app.status === 'cancelled' ? ' status-cancelled' : '') + (isCompact ? ' compact' : '');
 
     const phoneClean = (app.clientPhone || '').replace(/\D/g, '');
     const waLink = phoneClean ? `https://wa.me/${phoneClean}` : null;
     const telLink = phoneClean ? `tel:+${phoneClean}` : null;
 
     if (isCompact) {
-      // COMPACT 2-LINE CARD
+      // COMPACT CARD (NO PRICE, NO STATUS BADGE)
       const servicesSummary = (app.services || []).map(s => s.name).join(', ');
+      const detailsArr = [];
+      if (servicesSummary) detailsArr.push(servicesSummary);
+      if (app.materialsUsed) detailsArr.push('🧪 ' + app.materialsUsed);
+      if (app.notes) detailsArr.push('📝 ' + app.notes);
+      const detailsText = detailsArr.join(' • ');
+
       const noteTooltip = [
         app.materialsUsed ? 'Расход: ' + app.materialsUsed : '',
         app.notes ? 'Заметка: ' + app.notes : ''
@@ -1024,20 +1050,6 @@ function renderSchedule() {
             ${app.channel === 'whatsapp' ? '<span class="compact-channel-icon" title="Запись через WhatsApp">💬</span>' : ''}
             ${noteTooltip ? `<span class="compact-note-indicator" title="${noteTooltip}">📝</span>` : ''}
           </div>
-          <div class="compact-price-status">
-            <span class="compact-price">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</span>
-            ${app.status === 'scheduled' ? `
-              <button class="btn-action-small complete btn-complete-app" title="Отметить выполненным" aria-label="Завершить запись">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              </button>
-            ` : `<span class="compact-status-badge ${app.status}" title="${statusLabels[app.status]}">${app.status === 'completed' ? '✓' : '✕'}</span>`}
-          </div>
-        </div>
-
-        <div class="compact-row-bottom">
-          <div class="compact-services-text" title="${servicesSummary}">
-            ${servicesSummary || '<span style="opacity: 0.5;">Без услуг</span>'}
-          </div>
           <div class="compact-quick-actions">
             ${waLink ? `<a href="${waLink}" target="_blank" class="compact-mini-btn whatsapp" title="WhatsApp">💬</a>` : ''}
             ${telLink ? `<a href="${telLink}" class="compact-mini-btn call" title="Позвонить">📞</a>` : ''}
@@ -1046,11 +1058,19 @@ function renderSchedule() {
             </button>
           </div>
         </div>
+
+        ${detailsText ? `
+          <div class="compact-row-bottom">
+            <div class="compact-services-text" title="${detailsText}">
+              ${detailsText}
+            </div>
+          </div>
+        ` : ''}
       `;
     } else {
-      // COMFORTABLE DETAILED CARD
+      // COMFORTABLE DETAILED CARD (NO PRICE, NO STATUS BADGE)
       const servicesHtml = (app.services || []).map(s => `
-        <span class="service-tag">${s.name} (${s.price} ₸)</span>
+        <span class="service-tag">${s.name}</span>
       `).join('');
 
       card.innerHTML = `
@@ -1061,9 +1081,13 @@ function renderSchedule() {
               ? '<span class="channel-badge whatsapp" title="Запись через WhatsApp">💬 WhatsApp</span>' 
               : '<span class="channel-badge phone" title="Запись по телефонному звонку">📞 Звонок</span>'}
           </div>
-          <span class="badge-status ${app.status}">
-            ${statusLabels[app.status] || app.status}
-          </span>
+          <div class="quick-actions">
+            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
+            ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
+            <button type="button" class="btn-action-small parallel btn-parallel-app" title="Доп. запись на ${app.startTime || '--:--'} (+)" aria-label="Доп. запись на ${app.startTime || '--:--'}">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+          </div>
         </div>
 
         <div class="card-client-info">
@@ -1071,9 +1095,11 @@ function renderSchedule() {
           ${app.clientPhone ? `<div class="client-phone">📞 ${app.clientPhone}</div>` : ''}
         </div>
 
-        <div class="services-tags">
-          ${servicesHtml}
-        </div>
+        ${servicesHtml ? `
+          <div class="services-tags">
+            ${servicesHtml}
+          </div>
+        ` : ''}
 
         ${app.materialsUsed ? `
           <div class="materials-note">
@@ -1086,22 +1112,6 @@ function renderSchedule() {
             📝 ${app.notes}
           </div>
         ` : ''}
-
-        <div class="card-footer">
-          <div class="price-tag">${(Number(app.totalPrice) || 0).toLocaleString('ru-RU')} ₸</div>
-          <div class="quick-actions">
-            ${app.status === 'scheduled' ? `
-              <button class="btn-action-small complete btn-complete-app" title="Отметить выполненным" aria-label="Завершить запись">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              </button>
-            ` : ''}
-            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
-            ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
-            <button type="button" class="btn-action-small parallel btn-parallel-app" title="Доп. запись на ${app.startTime || '--:--'} (+)" aria-label="Доп. запись на ${app.startTime || '--:--'}">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-          </div>
-        </div>
       `;
     }
 
@@ -1113,31 +1123,11 @@ function renderSchedule() {
       openAppointmentModal(app);
     });
 
-    const btnComplete = card.querySelector('.btn-complete-app');
-    if (btnComplete) {
-      btnComplete.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        app.status = 'completed';
-        app.updatedAt = new Date().toISOString();
-        await window.db.updateAppointment(app);
-        showToast(`Запись «${app.clientName}» выполнена и оплачена!`);
-        await reloadData();
-      });
-    }
-
     const btnParallel = card.querySelector('.btn-parallel-app');
     if (btnParallel) {
       btnParallel.addEventListener('click', (e) => {
         e.stopPropagation();
         openAppointmentModal(null, null, app.startTime, app.date);
-      });
-    }
-
-    const btnEdit = card.querySelector('.btn-edit-app');
-    if (btnEdit) {
-      btnEdit.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openAppointmentModal(app);
       });
     }
 
@@ -1818,7 +1808,7 @@ function renderClients(searchQuery = '') {
       (a.clientName.toLowerCase() === c.name.toLowerCase())
     );
     const totalSpent = clientApps
-      .filter(a => a.status === 'completed')
+      .filter(isAppointmentCompleted)
       .reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
 
     const phoneClean = (c.phone || '').replace(/\D/g, '');
@@ -1858,7 +1848,7 @@ function openClientDetailsModal(client, clientApps) {
   state.viewingClientId = client.id;
   document.getElementById('clientDetailsName').innerText = client.name;
   document.getElementById('clientDetailsPhone').innerText = client.phone || 'Телефон не указан';
-  document.getElementById('clientDetailsVisitsCount').innerText = `${clientApps.length} визит(ов) • Всего: ${clientApps.filter(a => a.status === 'completed').reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0).toLocaleString('ru-RU')} ₸`;
+  document.getElementById('clientDetailsVisitsCount').innerText = `${clientApps.length} визит(ов) • Всего: ${clientApps.filter(isAppointmentCompleted).reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0).toLocaleString('ru-RU')} ₸`;
   document.getElementById('clientDetailsNotes').value = client.notes || '';
 
   // Actions
@@ -1944,7 +1934,7 @@ function renderFinance() {
   }
 
   // Calculate revenue (only completed appointments)
-  const completedApps = filteredAppointments.filter(a => a.status === 'completed');
+  const completedApps = filteredAppointments.filter(isAppointmentCompleted);
   const revenue = completedApps.reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
 
   // Calculate expenses

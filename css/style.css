@@ -591,17 +591,21 @@ body {
   left: 0;
   bottom: 0;
   width: 4px;
+  background: var(--accent-gold);
+  border-radius: 4px 0 0 4px;
+  transition: background-color 0.2s ease;
 }
 
-.appointment-card.status-scheduled::before { background: var(--status-scheduled); }
+.appointment-card.is-past::before { background: var(--status-completed); }
+.appointment-card.status-scheduled::before { background: var(--accent-gold); }
 .appointment-card.status-completed::before { background: var(--status-completed); }
 .appointment-card.status-cancelled::before { background: var(--status-cancelled); }
 
 .card-top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -1904,9 +1908,7 @@ input[type="number"] {
 
 .compact-row-bottom {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 6px;
   width: 100%;
   max-width: 100%;
   min-width: 0;
