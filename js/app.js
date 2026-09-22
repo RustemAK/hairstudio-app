@@ -21,7 +21,9 @@ const state = {
   editingExpenseId: null,
   viewingClientId: null,
   appointmentClientMode: 'existing',
-  scheduleViewMode: 'timeline'
+  scheduleViewMode: 'timeline',
+  workStartHour: 8,
+  workEndHour: 22
 };
 
 // ================= DATE HELPERS =================
@@ -258,6 +260,40 @@ function restoreSavedPreferences() {
   const savedExpenseCategory = localStorage.getItem('hairstudio_expense_category');
   if (savedExpenseCategory) {
     state.expenseCategory = savedExpenseCategory;
+  }
+
+  // Restore working hours for schedule timeline
+  const savedWorkStart = localStorage.getItem('hairstudio_work_start_hour');
+  state.workStartHour = savedWorkStart !== null ? parseInt(savedWorkStart, 10) : 8;
+
+  const savedWorkEnd = localStorage.getItem('hairstudio_work_end_hour');
+  state.workEndHour = savedWorkEnd !== null ? parseInt(savedWorkEnd, 10) : 22;
+
+  populateWorkHourSelects();
+}
+
+function populateWorkHourSelects() {
+  const startSelect = document.getElementById('settingWorkStartHour');
+  const endSelect = document.getElementById('settingWorkEndHour');
+  if (!startSelect || !endSelect) return;
+
+  startSelect.innerHTML = '';
+  endSelect.innerHTML = '';
+
+  for (let h = 0; h <= 23; h++) {
+    const hStr = String(h).padStart(2, '0') + ':00';
+
+    const optStart = document.createElement('option');
+    optStart.value = String(h);
+    optStart.textContent = hStr;
+    if (h === state.workStartHour) optStart.selected = true;
+    startSelect.appendChild(optStart);
+
+    const optEnd = document.createElement('option');
+    optEnd.value = String(h);
+    optEnd.textContent = hStr;
+    if (h === state.workEndHour) optEnd.selected = true;
+    endSelect.appendChild(optEnd);
   }
 }
 
@@ -561,6 +597,33 @@ function setupEventListeners() {
   if (btnThemeLight) {
     btnThemeLight.addEventListener('click', () => applyTheme('light'));
   }
+
+  // Working hours change listeners
+  const selectWorkStart = document.getElementById('settingWorkStartHour');
+  if (selectWorkStart) {
+    selectWorkStart.addEventListener('change', (e) => {
+      const val = parseInt(e.target.value, 10);
+      state.workStartHour = val;
+      safeStorage.set('hairstudio_work_start_hour', String(val));
+      if (state.scheduleViewMode === 'timeline') {
+        renderSchedule();
+      }
+      showToast(`Начало дня: ${String(val).padStart(2, '0')}:00`);
+    });
+  }
+
+  const selectWorkEnd = document.getElementById('settingWorkEndHour');
+  if (selectWorkEnd) {
+    selectWorkEnd.addEventListener('change', (e) => {
+      const val = parseInt(e.target.value, 10);
+      state.workEndHour = val;
+      safeStorage.set('hairstudio_work_end_hour', String(val));
+      if (state.scheduleViewMode === 'timeline') {
+        renderSchedule();
+      }
+      showToast(`Конец дня: ${String(val).padStart(2, '0')}:00`);
+    });
+  }
 }
 
 function switchTab(tabId, shouldScroll = true) {
@@ -770,9 +833,9 @@ function renderSchedule() {
     const timeline = document.createElement('div');
     timeline.className = 'timeline-container';
 
-    // Determine working hours (default 09:00 to 21:00, or wider if earlier/later apps exist)
-    let minHour = 9;
-    let maxHour = 21;
+    // Determine working hours (from master settings, or wider if earlier/later apps exist)
+    let minHour = typeof state.workStartHour === 'number' ? state.workStartHour : 8;
+    let maxHour = typeof state.workEndHour === 'number' ? state.workEndHour : 22;
 
     dayApps.forEach(a => {
       if (a.startTime) {
@@ -789,6 +852,32 @@ function renderSchedule() {
         }
       }
     });
+
+    if (minHour > maxHour) {
+      const tmp = minHour;
+      minHour = maxHour;
+      maxHour = tmp;
+    }
+
+    // Button to easily show earlier morning hours if not at 00:00
+    if (minHour > 0) {
+      const expandEarlierRow = document.createElement('div');
+      expandEarlierRow.className = 'timeline-expand-row';
+      const earlierTarget = Math.max(0, minHour - 2);
+      expandEarlierRow.innerHTML = `
+        <button type="button" class="btn-timeline-expand" title="Показать более ранние утренние часы">
+          ⬆ Показать с ${String(earlierTarget).padStart(2, '0')}:00 (ранние часы)
+        </button>
+      `;
+      expandEarlierRow.querySelector('button').addEventListener('click', () => {
+        state.workStartHour = earlierTarget;
+        safeStorage.set('hairstudio_work_start_hour', String(earlierTarget));
+        const startSel = document.getElementById('settingWorkStartHour');
+        if (startSel) startSel.value = String(earlierTarget);
+        renderSchedule();
+      });
+      timeline.appendChild(expandEarlierRow);
+    }
 
     for (let hour = minHour; hour <= maxHour; hour++) {
       const hourStr = String(hour).padStart(2, '0') + ':00';
@@ -834,6 +923,26 @@ function renderSchedule() {
       row.appendChild(timeCol);
       row.appendChild(contentCol);
       timeline.appendChild(row);
+    }
+
+    // Button to easily show later evening hours if not at 23:00
+    if (maxHour < 23) {
+      const expandLaterRow = document.createElement('div');
+      expandLaterRow.className = 'timeline-expand-row';
+      const laterTarget = Math.min(23, maxHour + 2);
+      expandLaterRow.innerHTML = `
+        <button type="button" class="btn-timeline-expand" title="Показать более поздние вечерние часы">
+          ⬇ Показать до ${String(laterTarget).padStart(2, '0')}:00 (поздние часы)
+        </button>
+      `;
+      expandLaterRow.querySelector('button').addEventListener('click', () => {
+        state.workEndHour = laterTarget;
+        safeStorage.set('hairstudio_work_end_hour', String(laterTarget));
+        const endSel = document.getElementById('settingWorkEndHour');
+        if (endSel) endSel.value = String(laterTarget);
+        renderSchedule();
+      });
+      timeline.appendChild(expandLaterRow);
     }
 
     container.appendChild(timeline);
@@ -966,10 +1075,11 @@ function openAppointmentModal(app = null, preselectedClient = null, defaultStart
   } else {
     document.getElementById('appId').value = '';
     document.getElementById('appDate').value = state.selectedDate;
-    const initStartTime = defaultStartTime || '10:00';
+    const defaultHour = typeof state.workStartHour === 'number' ? state.workStartHour : 9;
+    const initStartTime = defaultStartTime || `${String(defaultHour).padStart(2, '0')}:00`;
     document.getElementById('appStartTime').value = initStartTime;
     const [startH, startM] = initStartTime.split(':').map(Number);
-    const endH = String(Math.min(23, (startH || 10) + 1)).padStart(2, '0');
+    const endH = String(Math.min(23, (startH || defaultHour) + 1)).padStart(2, '0');
     const endM = String(startM || 0).padStart(2, '0');
     document.getElementById('appEndTime').value = `${endH}:${endM}`;
     document.getElementById('appTotalPrice').value = '';
@@ -1005,7 +1115,9 @@ function recalcAppointmentForm() {
 
   document.getElementById('appTotalPrice').value = totalPrice;
 
-  const startTime = document.getElementById('appStartTime').value || '10:00';
+  const defaultH = typeof state.workStartHour === 'number' ? state.workStartHour : 9;
+  const fallbackTime = `${String(defaultH).padStart(2, '0')}:00`;
+  const startTime = document.getElementById('appStartTime').value || fallbackTime;
   document.getElementById('appEndTime').value = addMinutesToTime(startTime, totalDuration || 60);
 }
 
@@ -1015,7 +1127,9 @@ function recalcAppointmentEndTime() {
     const s = state.services.find(item => item.id === id);
     if (s) totalDuration += Number(s.duration) || 60;
   });
-  const startTime = document.getElementById('appStartTime').value || '10:00';
+  const defaultH = typeof state.workStartHour === 'number' ? state.workStartHour : 9;
+  const fallbackTime = `${String(defaultH).padStart(2, '0')}:00`;
+  const startTime = document.getElementById('appStartTime').value || fallbackTime;
   document.getElementById('appEndTime').value = addMinutesToTime(startTime, totalDuration || 60);
 }
 

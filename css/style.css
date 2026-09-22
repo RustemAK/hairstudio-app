@@ -1401,6 +1401,34 @@ input[type="number"] {
   margin-bottom: 0;
 }
 
+.timeline-expand-row {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+  margin: 4px 0;
+}
+
+.btn-timeline-expand {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed var(--border-color);
+  color: var(--text-muted);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--transition-fast);
+}
+
+.btn-timeline-expand:hover, .btn-timeline-expand:active {
+  background: rgba(212, 163, 89, 0.12);
+  border-color: var(--accent-gold);
+  color: var(--accent-gold-light);
+}
+
 /* Quick Complete Button in quick-actions */
 .btn-action-small.complete {
   background: rgba(16, 185, 129, 0.15);

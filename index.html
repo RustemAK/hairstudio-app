@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=21">
+  <link rel="stylesheet" href="css/style.css?v=22">
 </head>
 <body>
 
@@ -545,6 +545,23 @@
               ☀️ Светлая
             </button>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Рабочие часы (сетка расписания)</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Начало дня</label>
+              <select id="settingWorkStartHour" class="form-select"></select>
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Конец дня</label>
+              <select id="settingWorkEndHour" class="form-select"></select>
+            </div>
+          </div>
+          <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">
+            Задайте время начала и конца сетки (например, с 06:00). Сетка автоматически расширится, если запись будет раньше или позже.
+          </span>
         </div>
 
         <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px;">
