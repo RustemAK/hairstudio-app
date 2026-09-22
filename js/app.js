@@ -1233,8 +1233,9 @@ function renderSchedule() {
           const row = document.createElement('div');
           row.className = 'timeline-hour-row';
 
+          const allPast = appsAtTime.every(isAppointmentPast);
           const timeCol = document.createElement('div');
-          timeCol.className = 'timeline-time-col has-app';
+          timeCol.className = 'timeline-time-col has-app' + (allPast ? ' is-past' : '');
           timeCol.innerText = timeKey; // Exact appointment time on the left (e.g. 11:30)
 
           const contentCol = document.createElement('div');
