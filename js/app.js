@@ -99,15 +99,96 @@ document.addEventListener('click', (e) => {
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     await window.db.init();
+    restoreSavedPreferences();
     await reloadData();
     setupEventListeners();
     setupDateStrip();
     setupServiceWorker();
+    restoreActiveTabAndScroll();
   } catch (err) {
     console.error('Initialization error:', err);
     showToast('Ошибка инициализации базы данных', 'error');
   }
 });
+
+function restoreSavedPreferences() {
+  // Restore view mode (timeline vs list)
+  const savedViewMode = localStorage.getItem('hairstudio_schedule_view');
+  if (savedViewMode) {
+    state.scheduleViewMode = savedViewMode;
+  }
+
+  // Restore schedule status filter
+  const savedStatusFilter = localStorage.getItem('hairstudio_schedule_filter');
+  if (savedStatusFilter) {
+    state.scheduleFilter = savedStatusFilter;
+  }
+
+  // Restore finance period
+  const savedFinancePeriod = localStorage.getItem('hairstudio_finance_period');
+  if (savedFinancePeriod) {
+    state.financePeriod = savedFinancePeriod;
+  }
+
+  // Restore service category filter
+  const savedServiceCategory = localStorage.getItem('hairstudio_service_category');
+  if (savedServiceCategory) {
+    state.serviceCategory = savedServiceCategory;
+  }
+
+  // Restore expense category filter
+  const savedExpenseCategory = localStorage.getItem('hairstudio_expense_category');
+  if (savedExpenseCategory) {
+    state.expenseCategory = savedExpenseCategory;
+  }
+}
+
+function restoreActiveTabAndScroll() {
+  const hashTab = window.location.hash.replace('#', '');
+  const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
+  const savedTab = (hashTab && validTabs.includes(hashTab))
+    ? hashTab
+    : (localStorage.getItem('hairstudio_active_tab') || 'schedule');
+
+  switchTab(savedTab, false);
+
+  // Restore UI element states (dropdowns, chips)
+  const viewSelect = document.getElementById('scheduleViewSelect');
+  if (viewSelect && state.scheduleViewMode) {
+    viewSelect.value = state.scheduleViewMode;
+  }
+
+  const statusFilterSelect = document.getElementById('appointmentStatusFilter');
+  if (statusFilterSelect && state.scheduleFilter) {
+    statusFilterSelect.value = state.scheduleFilter;
+  }
+
+  if (state.financePeriod) {
+    document.querySelectorAll('#financePeriodSelector .period-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-period') === state.financePeriod);
+    });
+  }
+
+  if (state.serviceCategory) {
+    document.querySelectorAll('#serviceCategoryFilter .chip-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-category') === state.serviceCategory);
+    });
+  }
+
+  if (state.expenseCategory) {
+    document.querySelectorAll('#expenseCategoryFilter .chip-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-category') === state.expenseCategory);
+    });
+  }
+
+  // Restore scroll position
+  const savedScroll = sessionStorage.getItem('hairstudio_scroll_' + savedTab);
+  if (savedScroll !== null) {
+    setTimeout(() => {
+      window.scrollTo({ top: Number(savedScroll), behavior: 'instant' });
+    }, 60);
+  }
+}
 
 async function reloadData() {
   state.services = await window.db.getServices();
@@ -142,11 +223,32 @@ function setupEventListeners() {
     });
   });
 
+  // Browser back/forward navigation support
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '');
+    const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
+    if (hash && hash !== state.activeTab && validTabs.includes(hash)) {
+      switchTab(hash, false);
+    }
+  });
+
+  // Save scroll position for the current tab (debounced)
+  let scrollDebounce;
+  window.addEventListener('scroll', () => {
+    clearTimeout(scrollDebounce);
+    scrollDebounce = setTimeout(() => {
+      if (state.activeTab) {
+        sessionStorage.setItem('hairstudio_scroll_' + state.activeTab, String(window.scrollY));
+      }
+    }, 100);
+  }, { passive: true });
+
   // Schedule Toolbar listeners (Dropdowns)
   const statusFilterSelect = document.getElementById('appointmentStatusFilter');
   if (statusFilterSelect) {
     statusFilterSelect.addEventListener('change', (e) => {
       state.scheduleFilter = e.target.value;
+      localStorage.setItem('hairstudio_schedule_filter', state.scheduleFilter);
       renderSchedule();
     });
   }
@@ -155,6 +257,7 @@ function setupEventListeners() {
   if (viewSelect) {
     viewSelect.addEventListener('change', (e) => {
       state.scheduleViewMode = e.target.value;
+      localStorage.setItem('hairstudio_schedule_view', state.scheduleViewMode);
       renderSchedule();
     });
   }
@@ -231,6 +334,7 @@ function setupEventListeners() {
       document.querySelectorAll('#serviceCategoryFilter .chip-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.serviceCategory = btn.getAttribute('data-category');
+      localStorage.setItem('hairstudio_service_category', state.serviceCategory);
       renderServices();
     });
   });
@@ -241,6 +345,7 @@ function setupEventListeners() {
       document.querySelectorAll('#expenseCategoryFilter .chip-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.expenseCategory = btn.getAttribute('data-category');
+      localStorage.setItem('hairstudio_expense_category', state.expenseCategory);
       renderExpenses();
     });
   });
@@ -251,6 +356,7 @@ function setupEventListeners() {
       document.querySelectorAll('#financePeriodSelector .period-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.financePeriod = btn.getAttribute('data-period');
+      localStorage.setItem('hairstudio_finance_period', state.financePeriod);
       renderFinance();
     });
   });
@@ -285,15 +391,38 @@ function setupEventListeners() {
   document.getElementById('appStartTime').addEventListener('change', recalcAppointmentEndTime);
 }
 
-function switchTab(tabId) {
+function switchTab(tabId, shouldScroll = true) {
+  const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
+  if (!validTabs.includes(tabId)) return;
+
+  // Save current tab scroll position before switching
+  if (state.activeTab && state.activeTab !== tabId) {
+    sessionStorage.setItem('hairstudio_scroll_' + state.activeTab, String(window.scrollY));
+  }
+
   state.activeTab = tabId;
+  localStorage.setItem('hairstudio_active_tab', tabId);
+
+  // Sync URL hash without jumping
+  if (window.location.hash !== '#' + tabId) {
+    history.replaceState(null, '', '#' + tabId);
+  }
+
   document.querySelectorAll('.nav-item').forEach(b => {
     b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
   });
   document.querySelectorAll('.tab-screen').forEach(s => {
     s.classList.toggle('active', s.id === `tab-${tabId}`);
   });
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (shouldScroll) {
+    const savedScroll = sessionStorage.getItem('hairstudio_scroll_' + tabId);
+    if (savedScroll !== null) {
+      window.scrollTo({ top: Number(savedScroll), behavior: 'instant' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
 }
 
 // ================= BANNER =================
