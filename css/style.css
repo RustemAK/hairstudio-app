@@ -1963,135 +1963,9 @@ input[type="number"] {
   border-color: rgba(59, 130, 246, 0.25);
 }
 
-.compact-mini-btn.parallel,
-.btn-action-small.parallel {
-  background: #2563eb !important;
-  border: 1px solid #3b82f6 !important;
-  color: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.45) !important;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
 
-.compact-mini-btn.parallel:hover,
-.compact-mini-btn.parallel:active,
-.btn-action-small.parallel:hover,
-.btn-action-small.parallel:active {
-  background: #1d4ed8 !important;
-  border-color: #60a5fa !important;
-  transform: scale(1.08);
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.65) !important;
-}
 
-[data-theme="light"] .compact-mini-btn.parallel,
-[data-theme="light"] .btn-action-small.parallel {
-  background: #2563eb !important;
-  border-color: #1d4ed8 !important;
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35) !important;
-}
 
-/* Timeline Exact Time Marker Row (e.g. 10:15 / 11:15 horizontal dashed line) */
-.timeline-time-marker-row {
-  display: flex;
-  align-items: center;
-  position: relative;
-  width: 100%;
-  min-width: 0;
-  margin-top: 6px;
-  margin-bottom: 4px;
-  box-sizing: border-box;
-  height: 18px;
-}
-
-.timeline-subhour-badge {
-  position: absolute;
-  left: -54px;
-  width: 44px;
-  text-align: right;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-gold-light);
-  white-space: nowrap;
-  letter-spacing: -0.2px;
-  line-height: 1;
-}
-
-[data-theme="light"] .timeline-subhour-badge {
-  color: #b45309;
-}
-
-.timeline-subhour-dot {
-  position: absolute;
-  left: -12px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--bg-card);
-  border: 2px solid var(--accent-gold);
-  z-index: 2;
-  box-shadow: 0 0 5px rgba(245, 158, 11, 0.35);
-}
-
-[data-theme="light"] .timeline-subhour-dot {
-  background: #ffffff;
-  border-color: #d97706;
-}
-
-.timeline-subhour-line {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.7) 0%, rgba(245, 158, 11, 0.3) 70%, transparent 100%);
-  border-top: 1px dashed rgba(245, 158, 11, 0.5);
-  margin-left: -2px;
-}
-
-[data-theme="light"] .timeline-subhour-line {
-  background: linear-gradient(90deg, rgba(217, 119, 6, 0.7) 0%, rgba(217, 119, 6, 0.25) 70%, transparent 100%);
-  border-top: 1px dashed rgba(217, 119, 6, 0.5);
-}
-
-.timeline-empty-slot.compact-pre-slot {
-  min-height: 28px;
-  padding: 3px 8px;
-  font-size: 11px;
-  border-style: dotted;
-  opacity: 0.85;
-}
-
-/* Button to add an additional appointment in an already occupied hour */
-.btn-timeline-add-parallel {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  width: 100%;
-  padding: 5px 10px;
-  background: rgba(37, 99, 235, 0.08);
-  border: 1px dashed rgba(59, 130, 246, 0.45);
-  border-radius: var(--radius-sm);
-  color: #60a5fa;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition-fast);
-  margin-top: 2px;
-  box-sizing: border-box;
-}
-
-.btn-timeline-add-parallel:hover,
-.btn-timeline-add-parallel:active {
-  background: rgba(37, 99, 235, 0.16);
-  border-color: #3b82f6;
-  color: #93c5fd;
-}
-
-[data-theme="light"] .btn-timeline-add-parallel {
-  background: rgba(37, 99, 235, 0.06);
-  border-color: rgba(37, 99, 235, 0.35);
-  color: #1d4ed8;
-}
 
 /* Compact Timeline tweaks */
 .timeline-container.compact .timeline-empty-slot {
@@ -2149,22 +2023,7 @@ input[type="number"] {
     padding: 8px 12px;
   }
 
-  .timeline-subhour-badge {
-    left: -48px;
-    width: 40px;
-    font-size: 10.5px;
-  }
 
-  .timeline-subhour-dot {
-    left: -10px;
-    width: 6px;
-    height: 6px;
-  }
-
-  .btn-timeline-add-parallel {
-    font-size: 10.5px;
-    padding: 4px 8px;
-  }
 
   .daily-banner {
     margin: 4px 12px;
@@ -2232,15 +2091,7 @@ input[type="number"] {
     padding: 6px 8px;
   }
 
-  .timeline-subhour-badge {
-    left: -42px;
-    width: 36px;
-    font-size: 10px;
-  }
 
-  .timeline-subhour-dot {
-    left: -9px;
-  }
 
   .daily-banner {
     margin: 4px 8px;
