@@ -831,7 +831,8 @@ function setupEventListeners() {
   // Schedule date navigation & picker
   const btnDatePrev = document.getElementById('btnDatePrevWeek');
   if (btnDatePrev) {
-    btnDatePrev.addEventListener('click', () => {
+    btnDatePrev.addEventListener('click', (e) => {
+      e.preventDefault();
       const cur = parseYMD(state.selectedDate);
       cur.setDate(cur.getDate() - 7);
       state.selectedDate = formatDateToYMD(cur);
@@ -842,7 +843,8 @@ function setupEventListeners() {
 
   const btnDateNext = document.getElementById('btnDateNextWeek');
   if (btnDateNext) {
-    btnDateNext.addEventListener('click', () => {
+    btnDateNext.addEventListener('click', (e) => {
+      e.preventDefault();
       const cur = parseYMD(state.selectedDate);
       cur.setDate(cur.getDate() + 7);
       state.selectedDate = formatDateToYMD(cur);
@@ -853,7 +855,8 @@ function setupEventListeners() {
 
   const btnDateToday = document.getElementById('btnDateToday');
   if (btnDateToday) {
-    btnDateToday.addEventListener('click', () => {
+    btnDateToday.addEventListener('click', (e) => {
+      e.preventDefault();
       const today = new Date();
       state.selectedDate = formatDateToYMD(today);
       setupDateStrip(today);
@@ -1075,6 +1078,11 @@ function setupDateStrip(baseDate = null) {
       state.selectedDate = dateStr;
       updateDateNavLabel();
       renderSchedule();
+      const scrollLeft = card.offsetLeft - (strip.clientWidth / 2) + (card.offsetWidth / 2);
+      strip.scrollTo({
+        left: Math.max(0, scrollLeft),
+        behavior: 'smooth'
+      });
     });
 
     strip.appendChild(card);
@@ -1083,13 +1091,17 @@ function setupDateStrip(baseDate = null) {
   updateDateNavLabel();
   renderDateStripDots();
 
-  // Scroll so that active card is visible
+  // Scroll horizontally inside dateStrip container ONLY (never scroll the window/page vertically)
   setTimeout(() => {
     const activeCard = strip.querySelector('.date-card.active');
     if (activeCard) {
-      activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+      const scrollLeft = activeCard.offsetLeft - (strip.clientWidth / 2) + (activeCard.offsetWidth / 2);
+      strip.scrollTo({
+        left: Math.max(0, scrollLeft),
+        behavior: 'smooth'
+      });
     }
-  }, 100);
+  }, 40);
 }
 
 function renderDateStripDots() {
