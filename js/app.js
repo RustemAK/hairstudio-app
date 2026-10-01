@@ -7,7 +7,7 @@
 const state = {
   cardDensity: 'compact',
   activeTab: 'schedule',
-  selectedDate: new Date().toISOString().split('T')[0],
+  selectedDate: formatDateToYMD(new Date()),
   scheduleFilter: 'all',
   serviceCategory: 'all',
   expenseCategory: 'all',
@@ -66,6 +66,17 @@ const safeStorage = {
   }
 };
 
+// HTML escape helper to prevent XSS
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function formatDateToYMD(date) {
   if (!(date instanceof Date) || isNaN(date.getTime())) {
     date = new Date();
@@ -74,6 +85,14 @@ function formatDateToYMD(date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+// Timezone-safe YMD string parser
+function parseYMD(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return new Date();
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3 || isNaN(parts[0])) return new Date();
+  return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
 }
 
 function isAppointmentPast(app) {
@@ -130,6 +149,20 @@ function addMinutesToTime(timeStr, minutesToAdd) {
   const newH = Math.floor(total / 60) % 24;
   const newM = total % 60;
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
+// Time overlap checker to detect conflicting appointments (QA-MED-3)
+function timesOverlap(start1, end1, start2, end2) {
+  if (!start1 || !end1 || !start2 || !end2) return false;
+  const toMin = (t) => {
+    const parts = String(t).split(':').map(Number);
+    return (parts[0] || 0) * 60 + (parts[1] || 0);
+  };
+  const s1 = toMin(start1);
+  const e1 = toMin(end1);
+  const s2 = toMin(start2);
+  const e2 = toMin(end2);
+  return Math.max(s1, s2) < Math.min(e1, e2);
 }
 
 // ================= TOAST NOTIFICATIONS =================
@@ -411,7 +444,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ================= THEME & CUSTOM BRANDING =================
 function loadStudioName() {
-  const savedName = localStorage.getItem('hairstudio_studio_name') || 'HairStudio';
+  const savedName = safeStorage.get('hairstudio_studio_name', 'HairStudio');
   const headerElem = document.getElementById('headerStudioName');
   if (headerElem) {
     headerElem.innerText = savedName;
@@ -427,7 +460,7 @@ function handleSaveStudioName() {
   const inputElem = document.getElementById('settingStudioName');
   if (!inputElem) return;
   const newName = inputElem.value.trim() || 'HairStudio';
-  localStorage.setItem('hairstudio_studio_name', newName);
+  safeStorage.set('hairstudio_studio_name', newName);
   loadStudioName();
   showToast('Название сохранено!');
 }
@@ -501,9 +534,9 @@ function restoreSavedPreferences() {
   }
 
   // Restore schedule status filter
-  const savedStatusFilter = localStorage.getItem('hairstudio_schedule_filter');
+  const savedStatusFilter = safeStorage.get('hairstudio_schedule_filter');
   if (savedStatusFilter) {
-    state.scheduleFilter = 'all';
+    state.scheduleFilter = savedStatusFilter;
   }
 
   // Restore finance period
@@ -795,6 +828,50 @@ function setupEventListeners() {
     });
   });
 
+  // Schedule date navigation & picker
+  const btnDatePrev = document.getElementById('btnDatePrevWeek');
+  if (btnDatePrev) {
+    btnDatePrev.addEventListener('click', () => {
+      const cur = parseYMD(state.selectedDate);
+      cur.setDate(cur.getDate() - 7);
+      state.selectedDate = formatDateToYMD(cur);
+      setupDateStrip(cur);
+      renderSchedule();
+    });
+  }
+
+  const btnDateNext = document.getElementById('btnDateNextWeek');
+  if (btnDateNext) {
+    btnDateNext.addEventListener('click', () => {
+      const cur = parseYMD(state.selectedDate);
+      cur.setDate(cur.getDate() + 7);
+      state.selectedDate = formatDateToYMD(cur);
+      setupDateStrip(cur);
+      renderSchedule();
+    });
+  }
+
+  const btnDateToday = document.getElementById('btnDateToday');
+  if (btnDateToday) {
+    btnDateToday.addEventListener('click', () => {
+      const today = new Date();
+      state.selectedDate = formatDateToYMD(today);
+      setupDateStrip(today);
+      renderSchedule();
+    });
+  }
+
+  const scheduleDateInput = document.getElementById('scheduleDateInput');
+  if (scheduleDateInput) {
+    scheduleDateInput.addEventListener('change', (e) => {
+      if (e.target.value) {
+        state.selectedDate = e.target.value;
+        setupDateStrip(parseYMD(state.selectedDate));
+        renderSchedule();
+      }
+    });
+  }
+
   // Client search input
   document.getElementById('clientSearchInput').addEventListener('input', (e) => {
     renderClients(e.target.value.toLowerCase().trim());
@@ -812,6 +889,9 @@ function setupEventListeners() {
 
   // Client notes save
   document.getElementById('btnSaveClientNotes').addEventListener('click', handleSaveClientNotes);
+
+  // Client delete
+  document.getElementById('btnDeleteClient').addEventListener('click', handleDeleteClient);
 
   // Backup & restore
   document.getElementById('btnExportBackup').addEventListener('click', handleExportBackup);
@@ -941,7 +1021,7 @@ function switchTab(tabId, shouldScroll = true) {
 
 // ================= BANNER =================
 function renderTodayBanner() {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = formatDateToYMD(new Date());
   document.getElementById('bannerTodayDate').innerText = formatFullDate(todayStr);
 
   const todayApps = state.appointments.filter(a => a.date === todayStr);
@@ -952,16 +1032,31 @@ function renderTodayBanner() {
   document.getElementById('bannerTodayRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
 }
 
+function updateDateNavLabel() {
+  const label = document.getElementById('currentMonthYearLabel');
+  const dateInput = document.getElementById('scheduleDateInput');
+  const d = parseYMD(state.selectedDate);
+  if (label) {
+    label.innerText = `${RU_MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}`;
+  }
+  if (dateInput) {
+    dateInput.value = state.selectedDate;
+  }
+}
+
 // ================= DATE STRIP (CALENDAR) =================
-function setupDateStrip() {
+function setupDateStrip(baseDate = null) {
   const strip = document.getElementById('dateStrip');
+  if (!strip) return;
   strip.innerHTML = '';
 
-  const centerDate = new Date();
-  // Generate 15 days (-3 to +11 days from today)
-  for (let i = -3; i <= 11; i++) {
-    const d = new Date();
-    d.setDate(centerDate.getDate() + i);
+  const activeDate = parseYMD(state.selectedDate);
+  const center = baseDate instanceof Date ? baseDate : activeDate;
+
+  // Generate 25 days (-10 to +14 days from center)
+  for (let i = -10; i <= 14; i++) {
+    const d = new Date(center);
+    d.setDate(center.getDate() + i);
     const dateStr = formatDateToYMD(d);
 
     const card = document.createElement('div');
@@ -978,11 +1073,15 @@ function setupDateStrip() {
       document.querySelectorAll('.date-card').forEach(c => c.classList.remove('active'));
       card.classList.add('active');
       state.selectedDate = dateStr;
+      updateDateNavLabel();
       renderSchedule();
     });
 
     strip.appendChild(card);
   }
+
+  updateDateNavLabel();
+  renderDateStripDots();
 
   // Scroll so that active card is visible
   setTimeout(() => {
@@ -1030,28 +1129,28 @@ function renderSchedule() {
 
     if (isCompact) {
       // COMPACT CARD (NO PRICE, NO STATUS BADGE)
-      const servicesSummary = (app.services || []).map(s => s.name).join(', ');
+      const servicesSummary = (app.services || []).map(s => escapeHtml(s.name)).join(', ');
       const detailsArr = [];
       if (servicesSummary) detailsArr.push(servicesSummary);
-      if (app.materialsUsed) detailsArr.push('Расход: ' + app.materialsUsed);
-      if (app.notes) detailsArr.push('📝 ' + app.notes);
+      if (app.materialsUsed) detailsArr.push('Расход: ' + escapeHtml(app.materialsUsed));
+      if (app.notes) detailsArr.push('📝 ' + escapeHtml(app.notes));
       const detailsText = detailsArr.join(' • ');
 
       const noteTooltip = [
-        app.materialsUsed ? 'Расход: ' + app.materialsUsed : '',
-        app.notes ? 'Заметка: ' + app.notes : ''
+        app.materialsUsed ? 'Расход: ' + escapeHtml(app.materialsUsed) : '',
+        app.notes ? 'Заметка: ' + escapeHtml(app.notes) : ''
       ].filter(Boolean).join(' | ');
 
       card.innerHTML = `
         <div class="compact-row-top">
           <div class="compact-time-name">
             <span class="compact-time">${app.startTime || '--:--'}–${app.endTime || '--:--'}</span>
-            <span class="compact-client-name" title="${app.clientName}">${app.clientName}</span>
+            <span class="compact-client-name" title="${escapeHtml(app.clientName)}">${escapeHtml(app.clientName)}</span>
             ${app.channel === 'whatsapp' ? '<span class="compact-channel-icon" title="Запись через WhatsApp">💬</span>' : ''}
             ${noteTooltip ? `<span class="compact-note-indicator" title="${noteTooltip}">📝</span>` : ''}
           </div>
           <div class="compact-quick-actions">
-            ${waLink ? `<a href="${waLink}" target="_blank" class="compact-mini-btn whatsapp" title="WhatsApp">💬</a>` : ''}
+            ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener noreferrer" class="compact-mini-btn whatsapp" title="WhatsApp">💬</a>` : ''}
             ${telLink ? `<a href="${telLink}" class="compact-mini-btn call" title="Позвонить">📞</a>` : ''}
           </div>
         </div>
@@ -1067,7 +1166,7 @@ function renderSchedule() {
     } else {
       // COMFORTABLE DETAILED CARD (NO PRICE, NO STATUS BADGE)
       const servicesHtml = (app.services || []).map(s => `
-        <span class="service-tag">${s.name}</span>
+        <span class="service-tag">${escapeHtml(s.name)}</span>
       `).join('');
 
       card.innerHTML = `
@@ -1079,14 +1178,14 @@ function renderSchedule() {
               : '<span class="channel-badge phone" title="Запись по телефонному звонку">📞 Звонок</span>'}
           </div>
           <div class="quick-actions">
-            ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
+            ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
             ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
           </div>
         </div>
 
         <div class="card-client-info">
-          <div class="client-name">${app.clientName}</div>
-          ${app.clientPhone ? `<div class="client-phone">📞 ${app.clientPhone}</div>` : ''}
+          <div class="client-name">${escapeHtml(app.clientName)}</div>
+          ${app.clientPhone ? `<div class="client-phone">📞 ${escapeHtml(app.clientPhone)}</div>` : ''}
         </div>
 
         ${servicesHtml ? `
@@ -1097,13 +1196,13 @@ function renderSchedule() {
 
         ${app.materialsUsed ? `
           <div class="materials-note">
-            <strong>Расход:</strong> ${app.materialsUsed}
+            <strong>Расход:</strong> ${escapeHtml(app.materialsUsed)}
           </div>
         ` : ''}
 
         ${app.notes ? `
           <div class="materials-note" style="border-left-color: var(--accent-gold); margin-top: 4px;">
-            📝 ${app.notes}
+            📝 ${escapeHtml(app.notes)}
           </div>
         ` : ''}
       `;
@@ -1450,59 +1549,118 @@ function recalcAppointmentEndTime() {
 
 async function handleAppointmentSubmit(e) {
   e.preventDefault();
+  const submitBtn = e.target.querySelector('[type="submit"]');
+  if (submitBtn) { if (submitBtn.disabled) return; submitBtn.disabled = true; }
 
-  const selectedServices = [];
-  state.selectedServicesForAppointment.forEach(id => {
-    const s = state.services.find(item => item.id === id);
-    if (s) {
-      selectedServices.push({
-        name: s.name,
-        price: Number(s.price),
-        duration: Number(s.duration)
-      });
+  try {
+    const selectedServices = [];
+    state.selectedServicesForAppointment.forEach(id => {
+      const s = state.services.find(item => item.id === id);
+      if (s) {
+        selectedServices.push({
+          name: s.name,
+          price: Number(s.price),
+          duration: Number(s.duration)
+        });
+      }
+    });
+
+    if (selectedServices.length === 0) {
+      showToast('Пожалуйста, выберите хотя бы одну услугу', 'error');
+      return;
     }
-  });
 
-  const clientName = document.getElementById('appClientName').value.trim();
-  if (!clientName) {
-    showToast(state.appointmentClientMode === 'existing' 
-      ? 'Пожалуйста, выберите клиента из списка или переключитесь на «Новый клиент»' 
-      : 'Пожалуйста, введите имя нового клиента', 'error');
-    return;
+    // QA-HIGH-2: Robust client name determination
+    let clientName = '';
+    let clientPhone = '';
+
+    if (state.appointmentClientMode === 'existing') {
+      const select = document.getElementById('appExistingClientSelect');
+      const selectedId = Number(select.value);
+      const client = state.clients.find(c => c.id === selectedId);
+      if (!client) {
+        showToast('Пожалуйста, выберите клиента из списка или переключитесь на «Новый клиент»', 'error');
+        return;
+      }
+      clientName = client.name;
+      clientPhone = client.phone || '';
+    } else {
+      clientName = document.getElementById('appClientName').value.trim();
+      clientPhone = document.getElementById('appClientPhone').value.trim();
+      if (!clientName) {
+        showToast('Пожалуйста, введите имя нового клиента', 'error');
+        document.getElementById('appClientName').focus();
+        return;
+      }
+    }
+
+    const appDate = document.getElementById('appDate').value;
+    const startTime = document.getElementById('appStartTime').value;
+    const endTime = document.getElementById('appEndTime').value;
+
+    if (!appDate || !startTime || !endTime) {
+      showToast('Пожалуйста, укажите дату и время записи', 'error');
+      return;
+    }
+
+    // QA-MED-3: Conflict & overlap check with existing non-cancelled appointments
+    const currentAppId = state.editingAppointmentId ? Number(state.editingAppointmentId) : null;
+    const overlappingApps = state.appointments.filter(a => {
+      if (a.date !== appDate) return false;
+      if (currentAppId && a.id === currentAppId) return false;
+      if (a.status === 'cancelled') return false;
+      return timesOverlap(a.startTime, a.endTime, startTime, endTime);
+    });
+
+    if (overlappingApps.length > 0) {
+      const conflictList = overlappingApps.map(a => `• ${a.clientName || 'Запись'} (${a.startTime || '??'}–${a.endTime || '??'})`).join('\n');
+      const proceed = confirm(`⚠️ Внимание! Наложение по времени с существующей записью:\n${conflictList}\n\nВсё равно сохранить запись?`);
+      if (!proceed) return;
+    }
+
+    const appData = {
+      clientName,
+      clientPhone,
+      date: appDate,
+      startTime,
+      endTime,
+      services: selectedServices,
+      totalPrice: Number(document.getElementById('appTotalPrice').value) || 0,
+      materialsUsed: document.getElementById('appMaterialsUsed').value.trim(),
+      notes: document.getElementById('appNotes').value.trim(),
+      status: document.getElementById('appStatus').value,
+      channel: document.getElementById('appChannel').value || 'phone',
+      updatedAt: new Date().toISOString()
+    };
+
+    if (state.editingAppointmentId) {
+      appData.id = Number(state.editingAppointmentId);
+      await window.db.updateAppointment(appData);
+      showToast('Запись успешно обновлена');
+    } else {
+      appData.createdAt = new Date().toISOString();
+      await window.db.addAppointment(appData);
+      showToast('Запись клиента успешно создана');
+    }
+
+    // Auto-save client to database if not exists
+    if (clientName) {
+      try {
+        await window.db.saveClientIfNotExists({
+          name: clientName,
+          phone: clientPhone,
+          notes: ''
+        });
+      } catch (cErr) {
+        console.warn('Auto-saving client failed:', cErr);
+      }
+    }
+
+    closeModal('modalAppointment');
+    await reloadData();
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
   }
-
-  if (selectedServices.length === 0) {
-    showToast('Пожалуйста, выберите хотя бы одну услугу', 'error');
-    return;
-  }
-
-  const appData = {
-    clientName: document.getElementById('appClientName').value.trim(),
-    clientPhone: document.getElementById('appClientPhone').value.trim(),
-    date: document.getElementById('appDate').value,
-    startTime: document.getElementById('appStartTime').value,
-    endTime: document.getElementById('appEndTime').value,
-    services: selectedServices,
-    totalPrice: Number(document.getElementById('appTotalPrice').value) || 0,
-    materialsUsed: document.getElementById('appMaterialsUsed').value.trim(),
-    notes: document.getElementById('appNotes').value.trim(),
-    status: document.getElementById('appStatus').value,
-    channel: document.getElementById('appChannel').value || 'phone',
-    updatedAt: new Date().toISOString()
-  };
-
-  if (state.editingAppointmentId) {
-    appData.id = Number(state.editingAppointmentId);
-    await window.db.updateAppointment(appData);
-    showToast('Запись успешно обновлена');
-  } else {
-    appData.createdAt = new Date().toISOString();
-    await window.db.addAppointment(appData);
-    showToast('Запись клиента успешно создана');
-  }
-
-  closeModal('modalAppointment');
-  await reloadData();
 }
 
 async function handleAppointmentDelete() {
@@ -1540,9 +1698,9 @@ function renderServices() {
     card.className = 'data-item-card';
     card.innerHTML = `
       <div class="item-left">
-        <div class="item-title">${s.name}</div>
+        <div class="item-title">${escapeHtml(s.name)}</div>
         <div class="item-meta">
-          <span>🏷️ ${s.category}</span>
+          <span>🏷️ ${escapeHtml(s.category)}</span>
           <span>⏱️ ${s.duration} мин</span>
         </div>
       </div>
@@ -1606,7 +1764,16 @@ async function handleServiceSubmit(e) {
 
 async function handleServiceDelete() {
   if (!state.editingServiceId) return;
-  if (confirm('Удалить эту услугу из прайс-листа?')) {
+  const service = state.services.find(item => item.id === Number(state.editingServiceId));
+  const serviceName = service ? service.name : '';
+  const usedCount = state.appointments.filter(a => a.services && a.services.some(srv => srv.name === serviceName)).length;
+
+  let msg = 'Удалить эту услугу из прайс-листа?';
+  if (usedCount > 0) {
+    msg = `Внимание: услуга «${serviceName}» использована в ${usedCount} записи(ях) в истории.\nОна будет удалена из прайс-листа для новых записей, но история прошлых визитов сохранится.\n\nПродолжить удаление?`;
+  }
+
+  if (confirm(msg)) {
     await window.db.deleteService(state.editingServiceId);
     closeModal('modalService');
     showToast('Услуга удалена');
@@ -1649,13 +1816,13 @@ function renderExpenses() {
     card.className = 'data-item-card';
     card.innerHTML = `
       <div class="item-left">
-        <div class="item-title">${exp.title}</div>
+        <div class="item-title">${escapeHtml(exp.title)}</div>
         <div class="item-meta">
           <span>📅 ${formatDisplayDate(exp.date)}</span>
-          <span>📁 ${exp.category}</span>
-          ${exp.quantity ? `<span>🔢 ${exp.quantity}</span>` : ''}
+          <span>📁 ${escapeHtml(exp.category)}</span>
+          ${exp.quantity ? `<span>🔢 ${escapeHtml(exp.quantity)}</span>` : ''}
         </div>
-        ${exp.notes ? `<div style="font-size: 11px; color: var(--text-subtle); margin-top: 2px;">${exp.notes}</div>` : ''}
+        ${exp.notes ? `<div style="font-size: 11px; color: var(--text-subtle); margin-top: 2px;">${escapeHtml(exp.notes)}</div>` : ''}
       </div>
       <div class="item-right">
         <div class="item-price expense">-${(Number(exp.amount) || 0).toLocaleString('ru-RU')} ₸</div>
@@ -1690,7 +1857,7 @@ function openExpenseModal(exp = null) {
     document.getElementById('expenseCategory').value = 'Красители';
     document.getElementById('expenseAmount').value = '';
     document.getElementById('expenseQuantity').value = '';
-    document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('expenseDate').value = formatDateToYMD(new Date());
     document.getElementById('expenseNotes').value = '';
   }
 
@@ -1772,17 +1939,17 @@ function renderClients(searchQuery = '') {
     card.className = 'data-item-card';
     card.innerHTML = `
       <div class="item-left">
-        <div class="item-title">${c.name}</div>
+        <div class="item-title">${escapeHtml(c.name)}</div>
         <div class="item-meta">
-          <span>📞 ${c.phone || 'без телефона'}</span>
+          <span>📞 ${escapeHtml(c.phone || 'без телефона')}</span>
           <span>📅 ${clientApps.length} визит(ов)</span>
           <span>💰 ${totalSpent.toLocaleString('ru-RU')} ₸</span>
         </div>
-        ${c.notes ? `<div style="font-size: 11px; color: var(--accent-gold-light); margin-top: 2px;">🎨 ${c.notes}</div>` : ''}
+        ${c.notes ? `<div style="font-size: 11px; color: var(--accent-gold-light); margin-top: 2px;">🎨 ${escapeHtml(c.notes)}</div>` : ''}
       </div>
       <div class="item-right">
         <div class="quick-actions">
-          ${waLink ? `<a href="${waLink}" target="_blank" class="btn-action-small whatsapp" title="WhatsApp">💬</a>` : ''}
+          ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp" title="WhatsApp">💬</a>` : ''}
           ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
           <button class="btn-action-small btn-view-client" title="Карточка клиента">📋</button>
         </div>
@@ -1808,7 +1975,7 @@ function openClientDetailsModal(client, clientApps) {
   const phoneClean = (client.phone || '').replace(/\D/g, '');
   const actionsBox = document.getElementById('clientDetailsActions');
   actionsBox.innerHTML = `
-    ${phoneClean ? `<a href="https://wa.me/${phoneClean}" target="_blank" class="btn-action-small whatsapp">💬</a>` : ''}
+    ${phoneClean ? `<a href="https://wa.me/${phoneClean}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp">💬</a>` : ''}
     ${phoneClean ? `<a href="tel:+${phoneClean}" class="btn-action-small call">📞</a>` : ''}
   `;
 
@@ -1829,9 +1996,9 @@ function openClientDetailsModal(client, clientApps) {
           <span style="color: var(--accent-gold-light);">${(Number(a.totalPrice) || 0).toLocaleString('ru-RU')} ₸</span>
         </div>
         <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-          ${(a.services || []).map(s => s.name).join(', ')}
+          ${(a.services || []).map(s => escapeHtml(s.name)).join(', ')}
         </div>
-        ${a.materialsUsed ? `<div style="font-size: 11px; color: var(--accent-gold); margin-top: 2px;">Расход: ${a.materialsUsed}</div>` : ''}
+        ${a.materialsUsed ? `<div style="font-size: 11px; color: var(--accent-gold); margin-top: 2px;">Расход: ${escapeHtml(a.materialsUsed)}</div>` : ''}
       `;
       item.addEventListener('click', () => {
         closeModal('modalClientDetails');
@@ -1855,6 +2022,19 @@ async function handleSaveClientNotes() {
   await reloadData();
 }
 
+async function handleDeleteClient() {
+  if (!state.viewingClientId) return;
+  const client = state.clients.find(c => c.id === state.viewingClientId);
+  if (!client) return;
+
+  if (confirm(`Удалить клиента "${client.name}" из базы?\n\nЗаписи клиента в расписании сохранятся.`)) {
+    await window.db.deleteClient(state.viewingClientId);
+    closeModal('modalClientDetails');
+    showToast('Клиент удалён из базы');
+    await reloadData();
+  }
+}
+
 // ================= FINANCE & PROFIT =================
 function renderFinance() {
   const period = state.financePeriod;
@@ -1863,10 +2043,12 @@ function renderFinance() {
 
   let filteredAppointments = [];
   let filteredExpenses = [];
+  let subText = 'Ваш реальный чистый доход за выбранный период';
 
   if (period === 'today') {
     filteredAppointments = state.appointments.filter(a => a.date === todayStr);
     filteredExpenses = state.expenses.filter(e => e.date === todayStr);
+    subText = 'Чистый доход за сегодня';
   } else if (period === 'week') {
     // Current week
     const firstDay = new Date(now);
@@ -1876,14 +2058,23 @@ function renderFinance() {
 
     filteredAppointments = state.appointments.filter(a => a.date >= firstDayStr && a.date <= todayStr);
     filteredExpenses = state.expenses.filter(e => e.date >= firstDayStr && e.date <= todayStr);
+    subText = 'Чистый доход за текущую неделю';
   } else if (period === 'month') {
     const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     filteredAppointments = state.appointments.filter(a => (a.date || '').startsWith(monthPrefix));
     filteredExpenses = state.expenses.filter(e => (e.date || '').startsWith(monthPrefix));
+    subText = `Чистый доход за ${RU_MONTHS_FULL[now.getMonth()]} ${now.getFullYear()}`;
+  } else if (period === 'prev_month') {
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthPrefix = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    filteredAppointments = state.appointments.filter(a => (a.date || '').startsWith(prevMonthPrefix));
+    filteredExpenses = state.expenses.filter(e => (e.date || '').startsWith(prevMonthPrefix));
+    subText = `Чистый доход за ${RU_MONTHS_FULL[prevDate.getMonth()]} ${prevDate.getFullYear()}`;
   } else {
     // All time
     filteredAppointments = state.appointments;
     filteredExpenses = state.expenses;
+    subText = 'Чистый доход за всё время';
   }
 
   // Calculate revenue (only completed appointments)
@@ -1906,6 +2097,9 @@ function renderFinance() {
   const profitElem = document.getElementById('statNetProfit');
   profitElem.innerText = `${netProfit.toLocaleString('ru-RU')} ₸`;
   profitElem.className = `stat-card-value ${netProfit >= 0 ? 'profit' : 'expense'}`;
+
+  const subElem = document.getElementById('statNetProfitSub');
+  if (subElem) subElem.innerText = subText;
 
   document.getElementById('statTotalRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
   document.getElementById('statAppointmentsCount').innerText = `${completedApps.length} вып. записей`;
@@ -1943,7 +2137,7 @@ function renderFinance() {
       row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;';
       row.innerHTML = `
         <div>
-          <div style="font-weight: 600; color: var(--text-main);">${name}</div>
+          <div style="font-weight: 600; color: var(--text-main);">${escapeHtml(name)}</div>
           <div style="font-size: 11px; color: var(--text-muted);">${data.count} раз(а)</div>
         </div>
         <div style="font-weight: 700; color: var(--accent-gold-light);">${data.revenue.toLocaleString('ru-RU')} ₸</div>
@@ -2101,7 +2295,7 @@ async function handleExportBackup() {
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = formatDateToYMD(new Date());
     a.href = url;
     a.download = `HairStudio_Backup_${dateStr}.json`;
     a.click();

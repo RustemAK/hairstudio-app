@@ -67,10 +67,23 @@ class HairStudioDB {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([storeName], mode);
       const store = transaction.objectStore(storeName);
-      const request = callback(store);
+      let request;
+      try {
+        request = callback(store);
+      } catch (err) {
+        reject(err);
+        return;
+      }
 
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      transaction.onerror = (e) => reject(transaction.error || (e && e.target && e.target.error) || new Error('Transaction failed'));
+      transaction.onabort = (e) => reject(transaction.error || (e && e.target && e.target.error) || new Error('Transaction aborted'));
+
+      if (request) {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = (e) => reject(request.error || (e && e.target && e.target.error));
+      } else {
+        transaction.oncomplete = () => resolve();
+      }
     });
   }
 
@@ -152,17 +165,27 @@ class HairStudioDB {
 
   async saveClientIfNotExists(clientData) {
     const clients = await this.getClients();
-    const existing = clients.find(c => 
-      (c.phone && clientData.phone && c.phone === clientData.phone) || 
-      (c.name.toLowerCase() === clientData.name.toLowerCase())
-    );
+    // Match by phone first (more reliable), fall back to name only if both have no phone
+    const existing = clients.find(c => {
+      // Phone match is authoritative — if both have phone, compare phones
+      if (c.phone && clientData.phone) {
+        const cDigits = c.phone.replace(/\D/g, '');
+        const dDigits = clientData.phone.replace(/\D/g, '');
+        return cDigits.length >= 10 && dDigits.length >= 10 && cDigits.slice(-10) === dDigits.slice(-10);
+      }
+      // If neither has a phone, match by name
+      if (!c.phone && !clientData.phone) {
+        return c.name.toLowerCase() === clientData.name.toLowerCase();
+      }
+      return false;
+    });
 
     if (existing) {
-      if (clientData.notes && !existing.notes.includes(clientData.notes)) {
-        existing.notes = existing.notes ? `${existing.notes}; ${clientData.notes}` : clientData.notes;
-        return this._tx('clients', 'readwrite', (store) => store.put(existing));
+      // Update phone if the existing record is missing one
+      if (!existing.phone && clientData.phone) {
+        existing.phone = clientData.phone;
       }
-      return existing;
+      return this._tx('clients', 'readwrite', (store) => store.put(existing));
     } else {
       const newClient = {
         name: clientData.name,
@@ -204,16 +227,38 @@ class HairStudioDB {
 
   async importAllData(jsonData) {
     const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData;
-    if (!data.appointments && !data.services && !data.expenses) {
-      throw new Error('Некорректный формат резервной копии');
+
+    // Validate structure before touching the database
+    if (!data || typeof data !== 'object') {
+      throw new Error('Некорректный формат: ожидается JSON-объект');
+    }
+    if (!data.appointments && !data.services && !data.expenses && !data.clients) {
+      throw new Error('Некорректный формат резервной копии: не найдены данные');
     }
 
+    // Validate that each field is an array (if present)
+    const stores = ['appointments', 'services', 'expenses', 'clients'];
+    for (const storeName of stores) {
+      if (data[storeName] !== undefined && !Array.isArray(data[storeName])) {
+        throw new Error(`Некорректный формат: "${storeName}" должен быть массивом`);
+      }
+    }
+
+    // Limit import size to prevent DoS (max 50,000 total records)
+    const totalRecords = stores.reduce((sum, s) => sum + (Array.isArray(data[s]) ? data[s].length : 0), 0);
+    if (totalRecords > 50000) {
+      throw new Error(`Слишком много записей для импорта: ${totalRecords}. Максимум: 50 000`);
+    }
+
+    // All validation passed — now safe to clear and import
     await this.clearAll();
 
     const addList = async (storeName, list) => {
       if (!list || !Array.isArray(list)) return;
       for (const item of list) {
-        await this._tx(storeName, 'readwrite', (store) => store.add(item));
+        if (item && typeof item === 'object') {
+          await this._tx(storeName, 'readwrite', (store) => store.add(item));
+        }
       }
     };
 
@@ -256,10 +301,11 @@ class HairStudioDB {
       await this.addService(s);
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
 
     const defaultExpenses = [
       { date: todayStr, title: 'Краска Matrix Socolor (10 тюбиков)', category: 'Красители', amount: 6800, quantity: '10 шт', notes: 'Оттенки 6N, 7A, 8M, 9V' },

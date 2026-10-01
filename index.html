@@ -2,8 +2,10 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>HairStudio — Запись клиентов и Учет</title>
+  <meta name="description" content="Мобильное PWA-приложение для мастеров-парикмахеров: запись клиентов, прайс-лист, учёт материалов и расчёт чистой прибыли">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';">
 
   <!-- PWA & Mobile Web App Meta Tags -->
   <link rel="manifest" href="manifest.json">
@@ -11,7 +13,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="HairStudio">
-  <link rel="apple-touch-icon" href="icons/icon-512.jpg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Google Fonts: Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,7 +21,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=32">
+  <link rel="stylesheet" href="css/style.css?v=35">
 </head>
 <body>
 
@@ -69,6 +71,24 @@
 
     <!-- TAB 1: SCHEDULE (КАЛЕНДАРЬ) -->
     <section id="tab-schedule" class="tab-screen active">
+      <!-- Date Navigation & Calendar Picker Header -->
+      <div class="date-nav-bar">
+        <div class="date-nav-left">
+          <button type="button" id="btnDatePrevWeek" class="btn-date-nav" title="Предыдущая неделя">◀</button>
+          <button type="button" id="btnDateToday" class="btn-date-today" title="Перейти к сегодняшнему дню">Сегодня</button>
+          <button type="button" id="btnDateNextWeek" class="btn-date-nav" title="Следующая неделя">▶</button>
+        </div>
+        <div class="date-nav-center">
+          <span id="currentMonthYearLabel" class="month-year-label">--</span>
+        </div>
+        <div class="date-nav-right">
+          <label class="btn-calendar-picker" title="Выбрать любую дату в календаре (прошлый месяц, год...)">
+            <span class="calendar-icon">📅</span>
+            <input type="date" id="scheduleDateInput" class="visually-hidden-date-input" aria-label="Выбрать конкретную дату">
+          </label>
+        </div>
+      </div>
+
       <!-- Date Strip -->
       <div id="dateStrip" class="date-strip-container">
         <!-- Generated dynamically via JS -->
@@ -138,6 +158,7 @@
         <button class="chip-btn" data-category="Окрашивание">Окрашивание</button>
         <button class="chip-btn" data-category="Уход">Уход</button>
         <button class="chip-btn" data-category="Укладка">Укладка</button>
+        <button class="chip-btn" data-category="Другое">Другое</button>
       </div>
       <div id="servicesList" class="data-list">
         <!-- Rendered via JS -->
@@ -169,7 +190,8 @@
       <div class="period-selector" id="financePeriodSelector">
         <button class="period-btn" data-period="today">Сегодня</button>
         <button class="period-btn" data-period="week">Неделя</button>
-        <button class="period-btn active" data-period="month">Месяц</button>
+        <button class="period-btn active" data-period="month">Этот месяц</button>
+        <button class="period-btn" data-period="prev_month">Прошлый месяц</button>
         <button class="period-btn" data-period="all">Всё время</button>
       </div>
 
@@ -364,12 +386,12 @@
           <textarea id="appNotes" class="form-textarea" placeholder="Особенности волос, прошлая формула, пожелания..."></textarea>
         </div>
 
-        <div class="form-group" style="display: none;">
+        <div class="form-group">
           <label class="form-label">Статус записи</label>
           <select id="appStatus" class="form-select">
             <option value="scheduled">🟡 Запланировано</option>
             <option value="completed">🟢 Выполнено и оплачено</option>
-            <option value="cancelled">🔴 Отменено</option>
+            <option value="cancelled">🔴 Отменено / Неявка</option>
           </select>
         </div>
 
@@ -507,6 +529,7 @@
           <textarea id="clientDetailsNotes" class="form-textarea" placeholder="Заметки о клиенте, аллергии, формулы краски..."></textarea>
           <button id="btnSaveClientNotes" class="btn-secondary" style="margin-top: 6px;">Сохранить формулу</button>
           <button type="button" id="btnBookThisClient" class="btn-primary" style="margin-top: 10px; width: 100%;">📅 Создать запись для этого клиента</button>
+          <button type="button" id="btnDeleteClient" class="btn-danger" style="margin-top: 8px; width: 100%; font-size: 12px;">🗑️ Удалить клиента из базы</button>
         </div>
 
         <div class="form-group">
@@ -629,7 +652,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/db.js?v=25"></script>
-  <script src="js/app.js?v=32"></script>
+  <script src="js/db.js?v=28"></script>
+  <script src="js/app.js?v=35"></script>
 </body>
 </html>
