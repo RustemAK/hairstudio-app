@@ -202,18 +202,36 @@ function showToast(message, type = 'success') {
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
+    // Close other open modals so they don't overlap or block the view
+    document.querySelectorAll('.modal-backdrop.active').forEach(m => {
+      if (m.id !== modalId) closeModal(m.id, false);
+    });
+
     // If not already active, push a history entry for iOS edge-swipe back support
     if (!modal.classList.contains('active')) {
-      history.pushState({ modalOpen: modalId }, '', window.location.href);
+      try {
+        history.pushState({ modalOpen: modalId }, '', window.location.href);
+      } catch (e) {
+        console.warn('history.pushState failed:', e);
+      }
     }
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.pointerEvents = 'auto';
     modal.classList.add('active');
     const sheet = modal.querySelector('.modal-sheet');
     if (sheet) {
-      sheet.style.transform = '';
+      sheet.style.transform = 'translateY(0)';
       sheet.style.transition = '';
     }
     modal.style.backgroundColor = '';
     modal.style.transition = '';
+
+    // If this is modalSettings, populate its fields immediately
+    if (modalId === 'modalSettings') {
+      try { loadOnlineBookingSettings(); } catch (e) { console.warn('loadOnlineBookingSettings error:', e); }
+      try { updateAutoBackupUI(); } catch (e) { console.warn('updateAutoBackupUI error:', e); }
+    }
   }
 }
 
@@ -221,6 +239,9 @@ function closeModal(modalId, syncHistory = true) {
   const modal = document.getElementById(modalId);
   if (modal) {
     modal.classList.remove('active');
+    modal.style.display = '';
+    modal.style.opacity = '';
+    modal.style.pointerEvents = '';
     const sheet = modal.querySelector('.modal-sheet');
     if (sheet) {
       sheet.style.transform = '';
@@ -231,10 +252,18 @@ function closeModal(modalId, syncHistory = true) {
 
     // If modal was closed via UI, sync history so back button/swipe doesn't hit stale modal
     if (syncHistory && history.state && history.state.modalOpen) {
-      history.back();
+      try {
+        history.back();
+      } catch (e) {
+        console.warn('history.back failed:', e);
+      }
     }
   }
 }
+
+// Expose globally for inline event handlers and external access
+window.openModal = openModal;
+window.closeModal = closeModal;
 
 // Close on backdrop click or close buttons
 document.addEventListener('click', (e) => {
@@ -447,51 +476,67 @@ function setupModalSwipeGestures() {
 }
 
 // ================= INITIALIZATION =================
-document.addEventListener('DOMContentLoaded', async () => {
+function initApp() {
   try {
-    await window.db.init();
+    // 1. Привязываем UI-обработчики и настройки немедленно — шестеренка, темы, вкладки реагируют мгновенно!
+    setupEventListeners();
     restoreSavedPreferences();
-    setupEventListeners(); // Привязываем обработчики сразу — шестеренка и кнопки реагируют мгновенно!
     loadOnlineBookingSettings();
-
-    // Неблокирующая загрузка авторизации мастера в фоне
-    initMasterAuth().then(() => {
-      loadOnlineBookingSettings();
-    }).catch(console.warn);
-
-    await reloadData();
-    setupDateStrip();
-    setupServiceWorker();
-    restoreActiveTabAndScroll();
-
-    // Фоновые задачи синхронизации
-    checkAndRunAutoBackup().catch(console.warn);
-    checkOnlineBookings(false).catch(console.warn);
-    triggerAutoSyncSlots().catch(console.warn);
-
-    // Периодическая проверка входящих заявок каждые 60с
-    setInterval(() => checkOnlineBookings(false), 60000);
-
-    // Обновление при возврате на вкладку
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) checkOnlineBookings(false);
-    });
-    window.addEventListener('hairstudio:new-booking', () => {
-      checkOnlineBookings(true);
-    });
-
-    // АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ: при появлении интернета сразу всё синхронизируем
-    window.addEventListener('online', () => {
-      console.log('📶 Интернет появился: запуск автоматической синхронизации...');
-      triggerAutoSyncSlots();
-      triggerSyncMasterServices();
-      checkOnlineBookings(false);
-    });
-  } catch (err) {
-    console.error('Initialization error:', err);
-    showToast('Ошибка инициализации базы данных', 'error');
+  } catch (uiErr) {
+    console.warn('UI setup error:', uiErr);
   }
-});
+
+  // 2. Асинхронная инициализация базы и данных
+  (async () => {
+    try {
+      await window.db.init();
+
+      // Неблокирующая загрузка авторизации мастера в фоне
+      initMasterAuth().then(() => {
+        loadOnlineBookingSettings();
+      }).catch(console.warn);
+
+      await reloadData();
+      setupDateStrip();
+      setupServiceWorker();
+      restoreActiveTabAndScroll();
+
+      // Фоновые задачи синхронизации
+      checkAndRunAutoBackup().catch(console.warn);
+      checkOnlineBookings(false).catch(console.warn);
+      triggerAutoSyncSlots().catch(console.warn);
+    } catch (err) {
+      console.error('Initialization error:', err);
+      showToast('Ошибка инициализации базы данных', 'error');
+    }
+  })();
+
+  // Периодическая проверка входящих заявок каждые 60с
+  setInterval(() => checkOnlineBookings(false), 60000);
+
+  // Обновление при возврате на вкладку
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkOnlineBookings(false);
+  });
+  window.addEventListener('hairstudio:new-booking', () => {
+    checkOnlineBookings(true);
+  });
+
+  // АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ: при появлении интернета сразу всё синхронизируем
+  window.addEventListener('online', () => {
+    console.log('📶 Интернет появился: запуск автоматической синхронизации...');
+    triggerAutoSyncSlots();
+    triggerSyncMasterServices();
+    checkOnlineBookings(false);
+  });
+}
+
+// Запуск инициализации: поддерживает и раннюю, и отложенную загрузку из кэша
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 // ================= THEME & CUSTOM BRANDING =================
 function loadStudioName() {
@@ -808,10 +853,14 @@ function setupEventListeners() {
   }
 
   // Appointment client mode listeners
-  document.getElementById('btnClientModeExisting').addEventListener('click', () => setClientMode('existing'));
-  document.getElementById('btnClientModeNew').addEventListener('click', () => setClientMode('new'));
-  document.getElementById('appExistingClientSelect').addEventListener('change', updateClientSelectionFromDropdown);
-  document.getElementById('btnCopyClientFormula').addEventListener('click', copyClientFormulaToNotes);
+  const btnClientExisting = document.getElementById('btnClientModeExisting');
+  if (btnClientExisting) btnClientExisting.addEventListener('click', () => setClientMode('existing'));
+  const btnClientNew = document.getElementById('btnClientModeNew');
+  if (btnClientNew) btnClientNew.addEventListener('click', () => setClientMode('new'));
+  const appExistingSelect = document.getElementById('appExistingClientSelect');
+  if (appExistingSelect) appExistingSelect.addEventListener('change', updateClientSelectionFromDropdown);
+  const btnCopyFormula = document.getElementById('btnCopyClientFormula');
+  if (btnCopyFormula) btnCopyFormula.addEventListener('click', copyClientFormulaToNotes);
 
   const btnBookClient = document.getElementById('btnBookThisClient');
   if (btnBookClient) {
@@ -826,24 +875,29 @@ function setupEventListeners() {
 
   // FAB button
   const fab = document.getElementById('btnFab');
-  fab.addEventListener('click', () => {
-    if (state.activeTab === 'schedule' || state.activeTab === 'clients') {
-      openAppointmentModal();
-    } else if (state.activeTab === 'services') {
-      openServiceModal();
-    } else if (state.activeTab === 'expenses') {
-      openExpenseModal();
-    } else if (state.activeTab === 'finance') {
-      openAppointmentModal();
-    }
-  });
+  if (fab) {
+    fab.addEventListener('click', () => {
+      if (state.activeTab === 'schedule' || state.activeTab === 'clients') {
+        openAppointmentModal();
+      } else if (state.activeTab === 'services') {
+        openServiceModal();
+      } else if (state.activeTab === 'expenses') {
+        openExpenseModal();
+      } else if (state.activeTab === 'finance') {
+        openAppointmentModal();
+      }
+    });
+  }
 
   // Settings button
-  document.getElementById('btnSettings').addEventListener('click', () => {
-    loadOnlineBookingSettings();
-    updateAutoBackupUI();
-    openModal('modalSettings');
-  });
+  const btnSettings = document.getElementById('btnSettings');
+  if (btnSettings) {
+    btnSettings.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openModal('modalSettings');
+    });
+  }
 
   // Status filter handled via schedule-dropdown
 
@@ -928,36 +982,55 @@ function setupEventListeners() {
   }
 
   // Client search input
-  document.getElementById('clientSearchInput').addEventListener('input', (e) => {
-    renderClients(e.target.value.toLowerCase().trim());
-  });
+  const clientSearchInput = document.getElementById('clientSearchInput');
+  if (clientSearchInput) {
+    clientSearchInput.addEventListener('input', (e) => {
+      renderClients(e.target.value.toLowerCase().trim());
+    });
+  }
 
   // Forms
-  document.getElementById('formAppointment').addEventListener('submit', handleAppointmentSubmit);
-  document.getElementById('btnDeleteAppointment').addEventListener('click', handleAppointmentDelete);
+  const formApp = document.getElementById('formAppointment');
+  if (formApp) formApp.addEventListener('submit', handleAppointmentSubmit);
+  const btnDelApp = document.getElementById('btnDeleteAppointment');
+  if (btnDelApp) btnDelApp.addEventListener('click', handleAppointmentDelete);
 
-  document.getElementById('formService').addEventListener('submit', handleServiceSubmit);
-  document.getElementById('btnDeleteService').addEventListener('click', handleServiceDelete);
+  const formServ = document.getElementById('formService');
+  if (formServ) formServ.addEventListener('submit', handleServiceSubmit);
+  const btnDelServ = document.getElementById('btnDeleteService');
+  if (btnDelServ) btnDelServ.addEventListener('click', handleServiceDelete);
 
-  document.getElementById('formExpense').addEventListener('submit', handleExpenseSubmit);
-  document.getElementById('btnDeleteExpense').addEventListener('click', handleExpenseDelete);
+  const formExp = document.getElementById('formExpense');
+  if (formExp) formExp.addEventListener('submit', handleExpenseSubmit);
+  const btnDelExp = document.getElementById('btnDeleteExpense');
+  if (btnDelExp) btnDelExp.addEventListener('click', handleExpenseDelete);
 
   // Client notes save
-  document.getElementById('btnSaveClientNotes').addEventListener('click', handleSaveClientNotes);
+  const btnSaveNotes = document.getElementById('btnSaveClientNotes');
+  if (btnSaveNotes) btnSaveNotes.addEventListener('click', handleSaveClientNotes);
 
   // Client delete
-  document.getElementById('btnDeleteClient').addEventListener('click', handleDeleteClient);
+  const btnDelClient = document.getElementById('btnDeleteClient');
+  if (btnDelClient) btnDelClient.addEventListener('click', handleDeleteClient);
 
   // Backup & restore
-  document.getElementById('btnExportBackup').addEventListener('click', handleExportBackup);
-  document.getElementById('btnImportBackup').addEventListener('click', () => {
-    document.getElementById('importFileInput').click();
-  });
-  document.getElementById('importFileInput').addEventListener('change', handleImportBackup);
-  document.getElementById('btnResetDemo').addEventListener('click', handleResetDemo);
+  const btnExport = document.getElementById('btnExportBackup');
+  if (btnExport) btnExport.addEventListener('click', handleExportBackup);
+  const btnImport = document.getElementById('btnImportBackup');
+  if (btnImport) {
+    btnImport.addEventListener('click', () => {
+      const fileInput = document.getElementById('importFileInput');
+      if (fileInput) fileInput.click();
+    });
+  }
+  const importInput = document.getElementById('importFileInput');
+  if (importInput) importInput.addEventListener('change', handleImportBackup);
+  const btnReset = document.getElementById('btnResetDemo');
+  if (btnReset) btnReset.addEventListener('click', handleResetDemo);
 
   // Auto calculate end time on start time change
-  document.getElementById('appStartTime').addEventListener('change', recalcAppointmentEndTime);
+  const appStartTime = document.getElementById('appStartTime');
+  if (appStartTime) appStartTime.addEventListener('change', recalcAppointmentEndTime);
 
   // Auto-backup listeners
   const intervalSelect = document.getElementById('settingAutoBackupInterval');
@@ -1554,41 +1627,53 @@ async function handleSignOut() {
 // ================= ONLINE BOOKINGS (SUPABASE) CONTROLLER =================
 
 function getMasterBookingUrl(slug) {
-  const currentOrigin = window.location.origin;
-  const currentPath = window.location.pathname.replace(/\/[^/]*$/, '');
-  const s = slug || safeStorage.get('hairstudio_master_slug', 'demo');
-  return `${currentOrigin}${currentPath}/book.html?m=${encodeURIComponent(s)}`;
+  try {
+    const currentOrigin = window.location.origin || '';
+    const currentPath = (window.location.pathname || '').replace(/\/[^/]*$/, '');
+    const s = slug || safeStorage.get('hairstudio_master_slug', 'demo');
+    return `${currentOrigin}${currentPath}/book.html?m=${encodeURIComponent(s)}`;
+  } catch (e) {
+    return `book.html?m=${encodeURIComponent(slug || 'demo')}`;
+  }
 }
 
 function updateBookingLinkDisplay() {
-  const inputSlug = document.getElementById('settingMasterSlug');
-  const slug = (inputSlug ? inputSlug.value.trim() : '') || 'demo';
-  const linkText = document.getElementById('settingBookingLinkText');
-  if (linkText) {
-    linkText.innerText = getMasterBookingUrl(slug);
+  try {
+    const inputSlug = document.getElementById('settingMasterSlug');
+    const slug = (inputSlug ? inputSlug.value.trim() : '') || 'demo';
+    const linkText = document.getElementById('settingBookingLinkText');
+    if (linkText) {
+      linkText.innerText = getMasterBookingUrl(slug);
+    }
+  } catch (e) {
+    console.warn('updateBookingLinkDisplay error:', e);
   }
 }
 
 function loadOnlineBookingSettings() {
-  const master = state.currentMaster || {};
-  const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
-  const address = master.address || safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
-  const instagram = master.instagram || safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
-  const studioName = master.salon_name || state.studioName || safeStorage.get('hairstudio_studio_name', 'HairStudio');
+  try {
+    const master = state.currentMaster || {};
+    const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
+    const address = master.address || safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
+    const instagram = master.instagram || safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
+    const studioName = master.salon_name || state.studioName || safeStorage.get('hairstudio_studio_name', 'HairStudio');
 
-  const inputSlug = document.getElementById('settingMasterSlug');
-  if (inputSlug) inputSlug.value = slug;
+    const inputSlug = document.getElementById('settingMasterSlug');
+    if (inputSlug) inputSlug.value = slug;
 
-  const inputAddress = document.getElementById('settingMasterAddress');
-  if (inputAddress) inputAddress.value = address;
+    const inputAddress = document.getElementById('settingMasterAddress');
+    if (inputAddress) inputAddress.value = address;
 
-  const inputIg = document.getElementById('settingMasterInstagram');
-  if (inputIg) inputIg.value = instagram;
+    const inputIg = document.getElementById('settingMasterInstagram');
+    if (inputIg) inputIg.value = instagram;
 
-  const inputStudioName = document.getElementById('settingStudioName');
-  if (inputStudioName) inputStudioName.value = studioName;
+    const inputStudioName = document.getElementById('settingStudioName');
+    if (inputStudioName) inputStudioName.value = studioName;
 
-  updateBookingLinkDisplay();
+    updateBookingLinkDisplay();
+  } catch (err) {
+    console.warn('loadOnlineBookingSettings error:', err);
+  }
 }
 
 async function handleSaveOnlineBookingSettings() {
@@ -3284,50 +3369,55 @@ async function restoreFromAutoBackup() {
 }
 
 function updateAutoBackupUI() {
-  const intervalSelect = document.getElementById('settingAutoBackupInterval');
-  if (intervalSelect) {
-    intervalSelect.value = safeStorage.get('hairstudio_autobackup_interval', 'weekly');
-  }
-
-  const dateLabel = document.getElementById('autoBackupDateLabel');
-  const metaLabel = document.getElementById('autoBackupMetaLabel');
-  const btnRestore = document.getElementById('btnRestoreAutoBackup');
-
-  const lastBackup = safeStorage.get('hairstudio_last_backup_time');
-  const hasData = localStorage.getItem('hairstudio_autobackup_data') !== null;
-
-  if (btnRestore) {
-    btnRestore.disabled = !hasData;
-    btnRestore.style.opacity = hasData ? '1' : '0.5';
-    btnRestore.style.cursor = hasData ? 'pointer' : 'not-allowed';
-  }
-
-  if (!lastBackup || !hasData) {
-    if (dateLabel) dateLabel.innerText = 'Не создавалась';
-    if (metaLabel) metaLabel.innerText = 'Нажмите «Создать сейчас» для первого снимка';
-    return;
-  }
-
-  const d = new Date(lastBackup);
-  if (isNaN(d.getTime())) {
-    if (dateLabel) dateLabel.innerText = 'Не создавалась';
-    return;
-  }
-
-  const isToday = new Date().toDateString() === d.toDateString();
-  const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const formattedDate = isToday ? `Сегодня, ${timeStr}` : `${d.toLocaleDateString('ru-RU')}, ${timeStr}`;
-
-  if (dateLabel) dateLabel.innerText = formattedDate;
-
-  const metaStr = safeStorage.get('hairstudio_last_backup_meta');
-  if (metaLabel && metaStr) {
-    try {
-      const meta = JSON.parse(metaStr);
-      metaLabel.innerText = `Записей: ${meta.appointmentsCount || 0} • Клиентов: ${meta.clientsCount || 0} • Услуг: ${meta.servicesCount || 0}`;
-    } catch (e) {
-      metaLabel.innerText = '';
+  try {
+    const intervalSelect = document.getElementById('settingAutoBackupInterval');
+    if (intervalSelect) {
+      intervalSelect.value = safeStorage.get('hairstudio_autobackup_interval', 'weekly');
     }
+
+    const dateLabel = document.getElementById('autoBackupDateLabel');
+    const metaLabel = document.getElementById('autoBackupMetaLabel');
+    const btnRestore = document.getElementById('btnRestoreAutoBackup');
+
+    const lastBackup = safeStorage.get('hairstudio_last_backup_time');
+    const backupData = safeStorage.get('hairstudio_autobackup_data');
+    const hasData = Boolean(backupData);
+
+    if (btnRestore) {
+      btnRestore.disabled = !hasData;
+      btnRestore.style.opacity = hasData ? '1' : '0.5';
+      btnRestore.style.cursor = hasData ? 'pointer' : 'not-allowed';
+    }
+
+    if (!lastBackup || !hasData) {
+      if (dateLabel) dateLabel.innerText = 'Не создавалась';
+      if (metaLabel) metaLabel.innerText = 'Нажмите «Создать сейчас» для первого снимка';
+      return;
+    }
+
+    const d = new Date(lastBackup);
+    if (isNaN(d.getTime())) {
+      if (dateLabel) dateLabel.innerText = 'Не создавалась';
+      return;
+    }
+
+    const isToday = new Date().toDateString() === d.toDateString();
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const formattedDate = isToday ? `Сегодня, ${timeStr}` : `${d.toLocaleDateString('ru-RU')}, ${timeStr}`;
+
+    if (dateLabel) dateLabel.innerText = formattedDate;
+
+    const metaStr = safeStorage.get('hairstudio_last_backup_meta');
+    if (metaLabel && metaStr) {
+      try {
+        const meta = JSON.parse(metaStr);
+        metaLabel.innerText = `Записей: ${meta.appointmentsCount || 0} • Клиентов: ${meta.clientsCount || 0} • Услуг: ${meta.servicesCount || 0}`;
+      } catch (e) {
+        metaLabel.innerText = '';
+      }
+    }
+  } catch (err) {
+    console.warn('updateAutoBackupUI error:', err);
   }
 }
 
