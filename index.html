@@ -21,7 +21,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=37">
+  <link rel="stylesheet" href="css/style.css?v=38">
 </head>
 <body>
 
@@ -869,28 +869,9 @@
             <input type="text" id="settingMasterInstagram" class="form-input" placeholder="hairstudio_kz" style="font-size: 13px; padding: 8px 10px;">
           </div>
 
-          <!-- Supabase Credentials (Cloud Sync) -->
-          <div style="margin-top: 10px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-md); padding: 12px;">
-            <div style="font-size: 12px; font-weight: 700; color: var(--accent-emerald); margin-bottom: 6px;">⚡ Подключение базы Supabase</div>
-            <div class="form-group" style="margin-bottom: 6px;">
-              <label style="font-size: 10px; color: var(--text-muted);">Project URL (https://xyz.supabase.co):</label>
-              <input type="url" id="settingSupabaseUrl" class="form-input" placeholder="https://your-project.supabase.co" style="font-size: 12px; padding: 8px;">
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
-              <label style="font-size: 10px; color: var(--text-muted);">Anon / Public API Key:</label>
-              <input type="password" id="settingSupabaseKey" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsIn..." style="font-size: 12px; padding: 8px;">
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <button type="button" id="btnSaveSupabaseConfig" class="btn-primary" style="flex: 1; padding: 8px; font-size: 12px;">💾 Сохранить</button>
-              <button type="button" id="btnTestSupabaseConfig" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;">🧪 Проверить</button>
-            </div>
-          </div>
-
-          <div style="margin-top: 10px;">
-            <button type="button" id="btnSyncCloudSlots" class="btn-secondary" style="width: 100%; padding: 10px; font-size: 12px;">
-              🔄 Синхронизировать занятые слоты в облако
-            </button>
-          </div>
+          <button type="button" id="btnSaveOnlineSettings" class="btn-primary" style="width: 100%; margin-top: 8px; padding: 10px; font-size: 13px;">
+            💾 Сохранить данные мастера
+          </button>
         </div>
 
         <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px; margin-top: 12px;">
@@ -958,6 +939,6 @@
   <!-- Scripts -->
   <script src="js/supabase-sync.js?v=4"></script>
   <script src="js/db.js?v=29"></script>
-  <script src="js/app.js?v=40"></script>
+  <script src="js/app.js?v=41"></script>
 </body>
 </html>

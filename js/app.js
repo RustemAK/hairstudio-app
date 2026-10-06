@@ -451,25 +451,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     await window.db.init();
     restoreSavedPreferences();
+    setupEventListeners(); // Привязываем обработчики сразу — шестеренка и кнопки реагируют мгновенно!
     loadOnlineBookingSettings();
-    await initMasterAuth();
+
+    // Неблокирующая загрузка авторизации мастера в фоне
+    initMasterAuth().then(() => {
+      loadOnlineBookingSettings();
+    }).catch(console.warn);
+
     await reloadData();
-    setupEventListeners();
     setupDateStrip();
     setupServiceWorker();
     restoreActiveTabAndScroll();
-    await checkAndRunAutoBackup();
-    await checkOnlineBookings(false);
 
-    // Periodic check for new online bookings every 60s
+    // Фоновые задачи синхронизации
+    checkAndRunAutoBackup().catch(console.warn);
+    checkOnlineBookings(false).catch(console.warn);
+    triggerAutoSyncSlots().catch(console.warn);
+
+    // Периодическая проверка входящих заявок каждые 60с
     setInterval(() => checkOnlineBookings(false), 60000);
 
-    // Refresh when tab gains focus or simulated event arrives
+    // Обновление при возврате на вкладку
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) checkOnlineBookings(false);
     });
     window.addEventListener('hairstudio:new-booking', () => {
       checkOnlineBookings(true);
+    });
+
+    // АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ: при появлении интернета сразу всё синхронизируем
+    window.addEventListener('online', () => {
+      console.log('📶 Интернет появился: запуск автоматической синхронизации...');
+      triggerAutoSyncSlots();
+      triggerSyncMasterServices();
+      checkOnlineBookings(false);
     });
   } catch (err) {
     console.error('Initialization error:', err);
@@ -824,6 +840,7 @@ function setupEventListeners() {
 
   // Settings button
   document.getElementById('btnSettings').addEventListener('click', () => {
+    loadOnlineBookingSettings();
     updateAutoBackupUI();
     openModal('modalSettings');
   });
@@ -1039,20 +1056,10 @@ function setupEventListeners() {
     });
   }
 
-  // Supabase Online Booking Settings Listeners
-  const btnSaveSupabase = document.getElementById('btnSaveSupabaseConfig');
-  if (btnSaveSupabase) {
-    btnSaveSupabase.addEventListener('click', handleSaveOnlineBookingSettings);
-  }
-
-  const btnTestSupabase = document.getElementById('btnTestSupabaseConfig');
-  if (btnTestSupabase) {
-    btnTestSupabase.addEventListener('click', handleTestSupabaseConnection);
-  }
-
-  const btnSyncSlots = document.getElementById('btnSyncCloudSlots');
-  if (btnSyncSlots) {
-    btnSyncSlots.addEventListener('click', handleSyncCloudSlots);
+  // Online Booking Settings Listeners
+  const btnSaveOnline = document.getElementById('btnSaveOnlineSettings');
+  if (btnSaveOnline) {
+    btnSaveOnline.addEventListener('click', handleSaveOnlineBookingSettings);
   }
 
   const btnCopyBooking = document.getElementById('btnCopyBookingLink');
@@ -1563,14 +1570,11 @@ function updateBookingLinkDisplay() {
 }
 
 function loadOnlineBookingSettings() {
-  const DEFAULT_SB_URL = 'https://joknmtpkaijexdaefsud.supabase.co';
-  const DEFAULT_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impva25tdHBrYWlqZXhkYWVmc3VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyNzc5MjMsImV4cCI6MjEwNjg1MzkyM30.1_fL5cC5av_dodTnUfbd0NjUwWX46UR3zDUopEdAK-0';
-
-  const slug = safeStorage.get('hairstudio_master_slug', 'demo');
-  const address = safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
-  const instagram = safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
-  const sbUrl = safeStorage.get('hairstudio_supabase_url', DEFAULT_SB_URL);
-  const sbKey = safeStorage.get('hairstudio_supabase_key', DEFAULT_SB_KEY);
+  const master = state.currentMaster || {};
+  const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
+  const address = master.address || safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
+  const instagram = master.instagram || safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
+  const studioName = master.salon_name || state.studioName || safeStorage.get('hairstudio_studio_name', 'HairStudio');
 
   const inputSlug = document.getElementById('settingMasterSlug');
   if (inputSlug) inputSlug.value = slug;
@@ -1581,11 +1585,8 @@ function loadOnlineBookingSettings() {
   const inputIg = document.getElementById('settingMasterInstagram');
   if (inputIg) inputIg.value = instagram;
 
-  const inputUrl = document.getElementById('settingSupabaseUrl');
-  if (inputUrl) inputUrl.value = sbUrl;
-
-  const inputKey = document.getElementById('settingSupabaseKey');
-  if (inputKey) inputKey.value = sbKey;
+  const inputStudioName = document.getElementById('settingStudioName');
+  if (inputStudioName) inputStudioName.value = studioName;
 
   updateBookingLinkDisplay();
 }
@@ -1594,32 +1595,42 @@ async function handleSaveOnlineBookingSettings() {
   const slugInput = document.getElementById('settingMasterSlug');
   const addrInput = document.getElementById('settingMasterAddress');
   const igInput = document.getElementById('settingMasterInstagram');
-  const urlInput = document.getElementById('settingSupabaseUrl');
-  const keyInput = document.getElementById('settingSupabaseKey');
+  const studioInput = document.getElementById('settingStudioName');
 
   const slug = (slugInput ? slugInput.value.trim().toLowerCase() : '') || 'demo';
   const address = (addrInput ? addrInput.value.trim() : '') || 'Алматы, пр. Абая 150';
   const instagram = (igInput ? igInput.value.trim().replace('@', '') : '') || '';
-  const sbUrl = urlInput ? urlInput.value.trim().replace(/\/+$/, '') : '';
-  const sbKey = keyInput ? keyInput.value.trim() : '';
+  const studioName = (studioInput ? studioInput.value.trim() : '') || 'HairStudio';
 
   safeStorage.set('hairstudio_master_slug', slug);
   safeStorage.set('hairstudio_master_address', address);
   safeStorage.set('hairstudio_master_instagram', instagram);
-  safeStorage.set('hairstudio_supabase_url', sbUrl);
-  safeStorage.set('hairstudio_supabase_key', sbKey);
+  safeStorage.set('hairstudio_studio_name', studioName);
 
-  if (window.HairSupabase) {
-    window.HairSupabase.saveSettings(sbUrl, sbKey, slug, true);
+  state.studioName = studioName;
+  loadStudioName();
+
+  // Синхронизируем изменения с облаком Supabase, если мастер авторизован
+  if (state.currentMaster && window.HairSupabase) {
+    try {
+      await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
+        slug: slug,
+        salon_name: studioName,
+        address: address,
+        instagram: instagram
+      });
+      state.currentMaster.slug = slug;
+      state.currentMaster.salon_name = studioName;
+      state.currentMaster.address = address;
+      state.currentMaster.instagram = instagram;
+    } catch (e) {
+      console.warn('Profile sync to Supabase failed:', e);
+    }
   }
 
   updateBookingLinkDisplay();
-  showToast('Настройки онлайн-записи сохранены!');
-
-  // Sync slots to cloud if configured
-  if (sbUrl && sbKey) {
-    triggerAutoSyncSlots();
-  }
+  showToast('Данные мастера сохранены!');
+  triggerAutoSyncSlots();
 }
 
 async function handleTestSupabaseConnection() {
@@ -1689,13 +1700,35 @@ function handleOpenBookingLink() {
   window.open(fullUrl, '_blank');
 }
 
+let isSyncingSlots = false;
+let pendingSlotsSync = false;
+
 async function triggerAutoSyncSlots() {
   if (!window.HairSupabase) return;
+  if (!navigator.onLine) {
+    pendingSlotsSync = true;
+    console.log('📶 Оффлайн: синхронизация слотов отложена до подключения к интернету');
+    return;
+  }
+  if (isSyncingSlots) {
+    pendingSlotsSync = true;
+    return;
+  }
+
+  isSyncingSlots = true;
   try {
     const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
     await window.HairSupabase.syncMasterBusySlots(targetMasterId, state.appointments);
+    pendingSlotsSync = false;
   } catch (e) {
-    console.warn('Auto sync slots failed:', e);
+    console.warn('Auto sync slots failed (will retry when online):', e);
+    pendingSlotsSync = true;
+  } finally {
+    isSyncingSlots = false;
+    if (pendingSlotsSync && navigator.onLine) {
+      pendingSlotsSync = false;
+      setTimeout(triggerAutoSyncSlots, 4000);
+    }
   }
 }
 
@@ -3261,7 +3294,7 @@ function updateAutoBackupUI() {
   const btnRestore = document.getElementById('btnRestoreAutoBackup');
 
   const lastBackup = safeStorage.get('hairstudio_last_backup_time');
-  const hasData = !!safeStorage.get('hairstudio_autobackup_data');
+  const hasData = localStorage.getItem('hairstudio_autobackup_data') !== null;
 
   if (btnRestore) {
     btnRestore.disabled = !hasData;
