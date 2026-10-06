@@ -2260,3 +2260,147 @@ input[type="number"] {
     background-position: right 4px center;
   }
 }
+
+/* ================= ONLINE BOOKINGS MODAL & BADGE ================= */
+.header-booking-btn {
+  position: relative;
+}
+
+.booking-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--accent-rose-gradient);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-shadow: 0 0 10px rgba(244, 63, 94, 0.6);
+  animation: badgePulse 2s infinite ease-in-out;
+}
+
+@keyframes badgePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); box-shadow: 0 0 14px rgba(244, 63, 94, 0.9); }
+}
+
+.bookings-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.booking-request-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--accent-gold);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.booking-request-card.pending {
+  border-left-color: var(--accent-gold);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.booking-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.booking-card-client {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.booking-card-phone {
+  font-size: 12px;
+  color: var(--accent-gold-light);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.booking-card-time-badge {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-main);
+  text-align: right;
+}
+
+.booking-card-services {
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.booking-card-note {
+  font-size: 12px;
+  color: var(--text-subtle);
+  background: var(--bg-input);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--border-accent);
+  font-style: italic;
+}
+
+.booking-actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-booking-accept {
+  flex: 1;
+  background: var(--accent-emerald-gradient);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: transform 0.15s ease;
+}
+
+.btn-booking-accept:active {
+  transform: scale(0.97);
+}
+
+.btn-booking-reject {
+  background: var(--bg-input);
+  color: var(--status-cancelled);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-booking-reject:active {
+  transform: scale(0.97);
+}
+

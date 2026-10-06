@@ -17,6 +17,7 @@ const state = {
   appointments: [],
   expenses: [],
   clients: [],
+  pendingBookings: [],
   editingAppointmentId: null,
   editingServiceId: null,
   editingExpenseId: null,
@@ -430,12 +431,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     await window.db.init();
     restoreSavedPreferences();
+    loadOnlineBookingSettings();
     await reloadData();
     setupEventListeners();
     setupDateStrip();
     setupServiceWorker();
     restoreActiveTabAndScroll();
     await checkAndRunAutoBackup();
+    await checkOnlineBookings(false);
+
+    // Periodic check for new online bookings every 60s
+    setInterval(() => checkOnlineBookings(false), 60000);
+
+    // Refresh when tab gains focus or simulated event arrives
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) checkOnlineBookings(false);
+    });
+    window.addEventListener('hairstudio:new-booking', () => {
+      checkOnlineBookings(true);
+    });
   } catch (err) {
     console.error('Initialization error:', err);
     showToast('Ошибка инициализации базы данных', 'error');
@@ -985,6 +999,412 @@ function setupEventListeners() {
       }
       showToast(`Конец дня: ${String(val).padStart(2, '0')}:00`);
     });
+  }
+
+  // Online Bookings Listeners
+  const btnOnlineBookings = document.getElementById('btnOnlineBookings');
+  if (btnOnlineBookings) {
+    btnOnlineBookings.addEventListener('click', () => {
+      openModal('modalBookings');
+      renderBookingsList();
+      checkOnlineBookings(false);
+    });
+  }
+
+  const btnRefreshBookings = document.getElementById('btnRefreshBookings');
+  if (btnRefreshBookings) {
+    btnRefreshBookings.addEventListener('click', () => {
+      checkOnlineBookings(true);
+    });
+  }
+
+  // Supabase Online Booking Settings Listeners
+  const btnSaveSupabase = document.getElementById('btnSaveSupabaseConfig');
+  if (btnSaveSupabase) {
+    btnSaveSupabase.addEventListener('click', handleSaveOnlineBookingSettings);
+  }
+
+  const btnTestSupabase = document.getElementById('btnTestSupabaseConfig');
+  if (btnTestSupabase) {
+    btnTestSupabase.addEventListener('click', handleTestSupabaseConnection);
+  }
+
+  const btnSyncSlots = document.getElementById('btnSyncCloudSlots');
+  if (btnSyncSlots) {
+    btnSyncSlots.addEventListener('click', handleSyncCloudSlots);
+  }
+
+  const btnCopyBooking = document.getElementById('btnCopyBookingLink');
+  if (btnCopyBooking) {
+    btnCopyBooking.addEventListener('click', handleCopyBookingLink);
+  }
+
+  const btnOpenBooking = document.getElementById('btnOpenBookingLink');
+  if (btnOpenBooking) {
+    btnOpenBooking.addEventListener('click', handleOpenBookingLink);
+  }
+
+  const inputMasterSlug = document.getElementById('settingMasterSlug');
+  if (inputMasterSlug) {
+    inputMasterSlug.addEventListener('input', updateBookingLinkDisplay);
+  }
+}
+
+// ================= ONLINE BOOKINGS (SUPABASE) CONTROLLER =================
+
+function getMasterBookingUrl(slug) {
+  const currentOrigin = window.location.origin;
+  const currentPath = window.location.pathname.replace(/\/[^/]*$/, '');
+  const s = slug || safeStorage.get('hairstudio_master_slug', 'demo');
+  return `${currentOrigin}${currentPath}/book.html?m=${encodeURIComponent(s)}`;
+}
+
+function updateBookingLinkDisplay() {
+  const inputSlug = document.getElementById('settingMasterSlug');
+  const slug = (inputSlug ? inputSlug.value.trim() : '') || 'demo';
+  const linkText = document.getElementById('settingBookingLinkText');
+  if (linkText) {
+    linkText.innerText = getMasterBookingUrl(slug);
+  }
+}
+
+function loadOnlineBookingSettings() {
+  const slug = safeStorage.get('hairstudio_master_slug', 'demo');
+  const address = safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
+  const instagram = safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
+  const sbUrl = safeStorage.get('hairstudio_supabase_url', '');
+  const sbKey = safeStorage.get('hairstudio_supabase_key', '');
+
+  const inputSlug = document.getElementById('settingMasterSlug');
+  if (inputSlug) inputSlug.value = slug;
+
+  const inputAddress = document.getElementById('settingMasterAddress');
+  if (inputAddress) inputAddress.value = address;
+
+  const inputIg = document.getElementById('settingMasterInstagram');
+  if (inputIg) inputIg.value = instagram;
+
+  const inputUrl = document.getElementById('settingSupabaseUrl');
+  if (inputUrl) inputUrl.value = sbUrl;
+
+  const inputKey = document.getElementById('settingSupabaseKey');
+  if (inputKey) inputKey.value = sbKey;
+
+  updateBookingLinkDisplay();
+}
+
+async function handleSaveOnlineBookingSettings() {
+  const slugInput = document.getElementById('settingMasterSlug');
+  const addrInput = document.getElementById('settingMasterAddress');
+  const igInput = document.getElementById('settingMasterInstagram');
+  const urlInput = document.getElementById('settingSupabaseUrl');
+  const keyInput = document.getElementById('settingSupabaseKey');
+
+  const slug = (slugInput ? slugInput.value.trim().toLowerCase() : '') || 'demo';
+  const address = (addrInput ? addrInput.value.trim() : '') || 'Алматы, пр. Абая 150';
+  const instagram = (igInput ? igInput.value.trim().replace('@', '') : '') || '';
+  const sbUrl = urlInput ? urlInput.value.trim().replace(/\/+$/, '') : '';
+  const sbKey = keyInput ? keyInput.value.trim() : '';
+
+  safeStorage.set('hairstudio_master_slug', slug);
+  safeStorage.set('hairstudio_master_address', address);
+  safeStorage.set('hairstudio_master_instagram', instagram);
+  safeStorage.set('hairstudio_supabase_url', sbUrl);
+  safeStorage.set('hairstudio_supabase_key', sbKey);
+
+  if (window.HairSupabase) {
+    window.HairSupabase.saveSettings(sbUrl, sbKey, slug, true);
+  }
+
+  updateBookingLinkDisplay();
+  showToast('Настройки онлайн-записи сохранены!');
+
+  // Sync slots to cloud if configured
+  if (sbUrl && sbKey) {
+    triggerAutoSyncSlots();
+  }
+}
+
+async function handleTestSupabaseConnection() {
+  if (!window.HairSupabase) {
+    showToast('Модуль синхронизации недоступен', 'error');
+    return;
+  }
+  const urlInput = document.getElementById('settingSupabaseUrl');
+  const keyInput = document.getElementById('settingSupabaseKey');
+  const url = urlInput ? urlInput.value.trim() : '';
+  const key = keyInput ? keyInput.value.trim() : '';
+
+  if (!url || !key) {
+    showToast('Укажите URL и Anon Key для проверки', 'error');
+    return;
+  }
+
+  window.HairSupabase.saveSettings(url, key, safeStorage.get('hairstudio_master_slug', 'demo'), true);
+  showToast('Проверка соединения...', 'info');
+
+  const res = await window.HairSupabase.testConnection();
+  if (res.ok) {
+    showToast('✅ Соединение с Supabase успешно!', 'success');
+  } else {
+    showToast(`❌ Ошибка подключения: ${res.error || res.status}`, 'error');
+  }
+}
+
+async function handleSyncCloudSlots() {
+  if (!window.HairSupabase) return;
+  const btn = document.getElementById('btnSyncCloudSlots');
+  if (btn) btn.disabled = true;
+  showToast('Синхронизация слотов...', 'info');
+
+  try {
+    const res = await window.HairSupabase.syncMasterBusySlots(null, state.appointments);
+    if (res.success) {
+      showToast(`✅ Синхронизировано ${res.count} слотов!`);
+    } else {
+      showToast(`Ошибка синхронизации: ${res.error || 'неизвестно'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Ошибка: ${err.message}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function handleCopyBookingLink() {
+  const slug = safeStorage.get('hairstudio_master_slug', 'demo');
+  const fullUrl = getMasterBookingUrl(slug);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(fullUrl).then(() => {
+      showToast('Ссылка скопирована в буфер!');
+    }).catch(() => {
+      prompt('Скопируйте ссылку вручную:', fullUrl);
+    });
+  } else {
+    prompt('Скопируйте ссылку вручную:', fullUrl);
+  }
+}
+
+function handleOpenBookingLink() {
+  const slug = safeStorage.get('hairstudio_master_slug', 'demo');
+  const fullUrl = getMasterBookingUrl(slug);
+  window.open(fullUrl, '_blank');
+}
+
+async function triggerAutoSyncSlots() {
+  if (!window.HairSupabase) return;
+  try {
+    await window.HairSupabase.syncMasterBusySlots(null, state.appointments);
+  } catch (e) {
+    console.warn('Auto sync slots failed:', e);
+  }
+}
+
+async function checkOnlineBookings(notify = false) {
+  if (!window.HairSupabase) return;
+  try {
+    const bookings = await window.HairSupabase.getPendingBookings();
+    state.pendingBookings = Array.isArray(bookings) ? bookings : [];
+
+    const badge = document.getElementById('bookingBadge');
+    if (badge) {
+      if (state.pendingBookings.length > 0) {
+        badge.innerText = String(state.pendingBookings.length);
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    const modal = document.getElementById('modalBookings');
+    if (modal && modal.classList.contains('active')) {
+      renderBookingsList();
+    }
+
+    if (notify) {
+      if (state.pendingBookings.length > 0) {
+        showToast(`Новых заявок: ${state.pendingBookings.length}`);
+      } else {
+        showToast('Новых заявок пока нет');
+      }
+    }
+  } catch (err) {
+    console.warn('Check bookings error:', err);
+  }
+}
+
+function renderBookingsList() {
+  const container = document.getElementById('bookingsList');
+  if (!container) return;
+
+  if (state.pendingBookings.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding: 30px 10px; text-align: center;">
+        <div style="font-size: 34px; margin-bottom: 8px;">📭</div>
+        <div style="font-weight: 700; color: var(--text-main); font-size: 15px;">Нет новых заявок</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 6px; line-height: 1.4;">
+          Когда клиенты отправят заявку по вашей ссылке онлайн-записи, она появится здесь для подтверждения.
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = state.pendingBookings.map(b => {
+    return `
+      <div class="booking-request-card pending" data-booking-id="${escapeHtml(b.id)}">
+        <div class="booking-card-header">
+          <div>
+            <div class="booking-card-client">${escapeHtml(b.client_name)}</div>
+            <div class="booking-card-phone">📞 ${escapeHtml(b.client_phone)}</div>
+          </div>
+          <div class="booking-card-time-badge">
+            <div>📅 ${formatDisplayDate(b.date)}</div>
+            <div style="color: var(--accent-gold-light);">${escapeHtml(b.start_time)} - ${escapeHtml(b.end_time)}</div>
+          </div>
+        </div>
+        <div class="booking-card-services">
+          <span>✂️</span>
+          <span>${escapeHtml(b.service_names)}</span>
+        </div>
+        ${b.client_note ? `<div class="booking-card-note">💬 ${escapeHtml(b.client_note)}</div>` : ''}
+        <div class="booking-actions-row">
+          <button type="button" class="btn-booking-accept" data-booking-action="accept" data-id="${escapeHtml(b.id)}">
+            ✅ Принять и WhatsApp
+          </button>
+          <button type="button" class="btn-booking-reject" data-booking-action="reject" data-id="${escapeHtml(b.id)}">
+            ❌ Отклонить
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Attach action buttons
+  container.querySelectorAll('[data-booking-action="accept"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      handleAcceptBooking(id);
+    });
+  });
+
+  container.querySelectorAll('[data-booking-action="reject"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      handleRejectBooking(id);
+    });
+  });
+}
+
+async function handleAcceptBooking(bookingId) {
+  const b = state.pendingBookings.find(item => item.id === bookingId);
+  if (!b) return;
+
+  // Check for time collision with existing appointments
+  const existingSameDay = state.appointments.filter(a => a.date === b.date && a.status !== 'cancelled');
+  const collision = existingSameDay.find(a => timesOverlap(b.start_time, b.end_time, a.startTime, a.endTime || a.startTime));
+
+  if (collision) {
+    const ok = confirm(`Внимание! На это время (${b.start_time} - ${b.end_time}) уже есть запись:\n"${collision.clientName}" (${collision.startTime} - ${collision.endTime || ''}).\n\nВсе равно принять запись онлайн?`);
+    if (!ok) return;
+  }
+
+  // Calculate matching services from master's services list if any
+  let totalPrice = 0;
+  const matchedServices = [];
+  const serviceNamesSplit = b.service_names.split(',').map(s => s.trim().toLowerCase());
+
+  state.services.forEach(srv => {
+    if (serviceNamesSplit.some(name => srv.name.toLowerCase().includes(name) || name.includes(srv.name.toLowerCase()))) {
+      matchedServices.push(srv);
+      totalPrice += Number(srv.price) || 0;
+    }
+  });
+
+  const appData = {
+    clientName: b.client_name,
+    clientPhone: b.client_phone,
+    date: b.date,
+    startTime: b.start_time,
+    endTime: b.end_time,
+    services: matchedServices.length > 0 ? matchedServices : [{ name: b.service_names, price: 0, duration: b.duration_min }],
+    totalPrice: totalPrice,
+    materialsUsed: '',
+    notes: b.client_note ? `[Онлайн-запись] ${b.client_note}` : '[Онлайн-запись]',
+    status: 'scheduled',
+    channel: 'whatsapp',
+    createdAt: new Date().toISOString()
+  };
+
+  try {
+    // 1. Add appointment to master's IndexedDB
+    await window.db.addAppointment(appData);
+
+    // 2. Mark as confirmed in cloud
+    if (window.HairSupabase) {
+      await window.HairSupabase.updateBookingStatus(bookingId, 'confirmed');
+    }
+
+    // 3. Remove from pending and re-render
+    state.pendingBookings = state.pendingBookings.filter(item => item.id !== bookingId);
+    renderBookingsList();
+    const badge = document.getElementById('bookingBadge');
+    if (badge) {
+      badge.style.display = state.pendingBookings.length > 0 ? 'flex' : 'none';
+      badge.innerText = String(state.pendingBookings.length);
+    }
+
+    // 4. Reload schedule
+    await reloadData();
+    triggerAutoSyncSlots();
+
+    // 5. Open WhatsApp chat with prefilled template
+    const cleanPhone = (b.client_phone || '').replace(/\D/g, '');
+    const address = safeStorage.get('hairstudio_master_address', 'пр. Абая 150');
+    const waText = `Здравствуйте, ${b.client_name}!\n\nВаша запись подтверждена ✅\n✂️ Услуга: ${b.service_names}\n📅 Дата: ${formatFullDate(b.date)}\n⏰ Время: ${b.start_time} - ${b.end_time}\n📍 Адрес: ${address}\n\nЖдем вас! Если планы изменятся, пожалуйста, предупредите заранее.`;
+
+    if (cleanPhone) {
+      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`, '_blank');
+    }
+
+    showToast('Запись принята и добавлена в расписание!');
+  } catch (err) {
+    console.error('Accept booking error:', err);
+    showToast(`Ошибка: ${err.message}`, 'error');
+  }
+}
+
+async function handleRejectBooking(bookingId) {
+  const b = state.pendingBookings.find(item => item.id === bookingId);
+  if (!b) return;
+
+  const ok = confirm(`Отклонить заявку клиента ${b.client_name} на ${formatDisplayDate(b.date)} в ${b.start_time}?`);
+  if (!ok) return;
+
+  try {
+    if (window.HairSupabase) {
+      await window.HairSupabase.updateBookingStatus(bookingId, 'rejected');
+    }
+
+    state.pendingBookings = state.pendingBookings.filter(item => item.id !== bookingId);
+    renderBookingsList();
+    const badge = document.getElementById('bookingBadge');
+    if (badge) {
+      badge.style.display = state.pendingBookings.length > 0 ? 'flex' : 'none';
+      badge.innerText = String(state.pendingBookings.length);
+    }
+
+    // Open WhatsApp with polite reschedule message
+    const cleanPhone = (b.client_phone || '').replace(/\D/g, '');
+    if (cleanPhone) {
+      const waText = `Здравствуйте, ${b.client_name}!\n\nК сожалению, ${formatFullDate(b.date)} в ${b.start_time} я не смогу вас принять (время занято).\nМогу предложить свободные окна в другой день. Подскажите, когда вам удобно?`;
+      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`, '_blank');
+    }
+
+    showToast('Заявка отклонена');
+  } catch (err) {
+    console.error('Reject booking error:', err);
+    showToast(`Ошибка: ${err.message}`, 'error');
   }
 }
 
@@ -1670,6 +2090,7 @@ async function handleAppointmentSubmit(e) {
 
     closeModal('modalAppointment');
     await reloadData();
+    triggerAutoSyncSlots();
   } finally {
     if (submitBtn) submitBtn.disabled = false;
   }
@@ -1682,6 +2103,7 @@ async function handleAppointmentDelete() {
     closeModal('modalAppointment');
     showToast('Запись удалена');
     await reloadData();
+    triggerAutoSyncSlots();
   }
 }
 

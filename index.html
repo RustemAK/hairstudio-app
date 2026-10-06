@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>HairStudio — Запись клиентов и Учет</title>
   <meta name="description" content="Мобильное PWA-приложение для мастеров-парикмахеров: запись клиентов, прайс-лист, учёт материалов и расчёт чистой прибыли">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co;">
 
   <!-- PWA & Mobile Web App Meta Tags -->
   <link rel="manifest" href="manifest.json">
@@ -21,7 +21,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=36">
+  <link rel="stylesheet" href="css/style.css?v=37">
 </head>
 <body>
 
@@ -41,6 +41,10 @@
       </div>
     </div>
     <div class="header-actions">
+      <button id="btnOnlineBookings" class="btn-icon header-booking-btn" title="Входящие онлайн-заявки" aria-label="Онлайн-заявки" style="position: relative;">
+        🔔
+        <span id="bookingBadge" class="booking-badge" style="display: none;">0</span>
+      </button>
       <button id="btnThemeToggle" class="btn-icon" title="Переключить тему (светлая/тёмная)" aria-label="Тема">🌙</button>
       <button id="btnSettings" class="btn-icon" title="Настройки и бэкап" aria-label="Настройки">
         ⚙️
@@ -542,7 +546,27 @@
     </div>
   </div>
 
-  <!-- Modal 5: Settings & Backup (Настройки и бэкап) -->
+  <!-- Modal 5: Online Bookings (Входящие онлайн-заявки) -->
+  <div id="modalBookings" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 class="modal-title">🔔 Входящие онлайн-заявки</h3>
+        <button class="modal-close" data-close="modalBookings">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="bookingsListSummary" style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+          <span>Новые бронирования от клиентов</span>
+          <button type="button" id="btnRefreshBookings" class="btn-secondary" style="padding: 6px 12px; font-size: 12px;">🔄 Обновить</button>
+        </div>
+        <div id="bookingsList" class="bookings-list-container">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 6: Settings & Backup (Настройки и бэкап) -->
   <div id="modalSettings" class="modal-backdrop">
     <div class="modal-sheet">
       <div class="modal-handle"></div>
@@ -589,7 +613,62 @@
           </span>
         </div>
 
-        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px;">
+        <!-- Онлайн-запись для клиентов (Supabase) -->
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+          <label class="form-label">🌐 Онлайн-запись для клиентов (Supabase)</label>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Ссылка для шапки Instagram, визиток или WhatsApp. Клиенты смогут бронировать свободные окна.
+          </p>
+
+          <div style="background: var(--bg-input); padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 10px;">
+            <div style="font-size: 11px; color: var(--text-subtle); margin-bottom: 4px;">Ваша ссылка для клиентов:</div>
+            <div id="settingBookingLinkText" style="font-size: 13px; font-weight: 600; color: var(--accent-gold-light); word-break: break-all; margin-bottom: 8px;">--</div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btnCopyBookingLink" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;">📋 Скопировать</button>
+              <button type="button" id="btnOpenBookingLink" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;">↗ Открыть</button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label style="font-size: 11px; color: var(--text-muted);">Короткий адрес (Slug мастера):</label>
+            <input type="text" id="settingMasterSlug" class="form-input" placeholder="demo" style="font-size: 13px; padding: 8px 10px;">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label style="font-size: 11px; color: var(--text-muted);">Адрес студии / Город:</label>
+            <input type="text" id="settingMasterAddress" class="form-input" placeholder="Алматы, пр. Абая 150" style="font-size: 13px; padding: 8px 10px;">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label style="font-size: 11px; color: var(--text-muted);">Instagram аккаунт (@ник):</label>
+            <input type="text" id="settingMasterInstagram" class="form-input" placeholder="hairstudio_kz" style="font-size: 13px; padding: 8px 10px;">
+          </div>
+
+          <!-- Supabase Credentials (Cloud Sync) -->
+          <div style="margin-top: 10px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: var(--radius-md); padding: 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--accent-emerald); margin-bottom: 6px;">⚡ Подключение базы Supabase</div>
+            <div class="form-group" style="margin-bottom: 6px;">
+              <label style="font-size: 10px; color: var(--text-muted);">Project URL (https://xyz.supabase.co):</label>
+              <input type="url" id="settingSupabaseUrl" class="form-input" placeholder="https://your-project.supabase.co" style="font-size: 12px; padding: 8px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 8px;">
+              <label style="font-size: 10px; color: var(--text-muted);">Anon / Public API Key:</label>
+              <input type="password" id="settingSupabaseKey" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsIn..." style="font-size: 12px; padding: 8px;">
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btnSaveSupabaseConfig" class="btn-primary" style="flex: 1; padding: 8px; font-size: 12px;">💾 Сохранить</button>
+              <button type="button" id="btnTestSupabaseConfig" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;">🧪 Проверить</button>
+            </div>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <button type="button" id="btnSyncCloudSlots" class="btn-secondary" style="width: 100%; padding: 10px; font-size: 12px;">
+              🔄 Синхронизировать занятые слоты в облако
+            </button>
+          </div>
+        </div>
+
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px; margin-top: 12px;">
           <h4 style="color: var(--accent-gold-light); font-size: 14px; margin-bottom: 4px;">📲 Установка на iPhone / Android</h4>
           <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
             <strong>На iPhone:</strong> Откройте сайт в Safari, нажмите кнопку «Поделиться» (иконка квадрата со стрелкой) и выберите <strong>«На экран "Домой"»</strong>.<br>
@@ -652,7 +731,8 @@
   </div>
 
   <!-- Scripts -->
+  <script src="js/supabase-sync.js?v=1"></script>
   <script src="js/db.js?v=28"></script>
-  <script src="js/app.js?v=36"></script>
+  <script src="js/app.js?v=37"></script>
 </body>
 </html>
