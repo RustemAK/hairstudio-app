@@ -1069,11 +1069,14 @@ function updateBookingLinkDisplay() {
 }
 
 function loadOnlineBookingSettings() {
+  const DEFAULT_SB_URL = 'https://joknmtpkaijexdaefsud.supabase.co';
+  const DEFAULT_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impva25tdHBrYWlqZXhkYWVmc3VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyNzc5MjMsImV4cCI6MjEwNjg1MzkyM30.1_fL5cC5av_dodTnUfbd0NjUwWX46UR3zDUopEdAK-0';
+
   const slug = safeStorage.get('hairstudio_master_slug', 'demo');
   const address = safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
   const instagram = safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
-  const sbUrl = safeStorage.get('hairstudio_supabase_url', '');
-  const sbKey = safeStorage.get('hairstudio_supabase_key', '');
+  const sbUrl = safeStorage.get('hairstudio_supabase_url', DEFAULT_SB_URL);
+  const sbKey = safeStorage.get('hairstudio_supabase_key', DEFAULT_SB_KEY);
 
   const inputSlug = document.getElementById('settingMasterSlug');
   if (inputSlug) inputSlug.value = slug;

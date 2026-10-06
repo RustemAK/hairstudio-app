@@ -40,10 +40,13 @@
     }
   }
 
+  const DEFAULT_SUPABASE_URL = 'https://joknmtpkaijexdaefsud.supabase.co';
+  const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impva25tdHBrYWlqZXhkYWVmc3VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyNzc5MjMsImV4cCI6MjEwNjg1MzkyM30.1_fL5cC5av_dodTnUfbd0NjUwWX46UR3zDUopEdAK-0';
+
   // Active configuration
   const config = {
-    url: getItem(STORAGE_KEYS.URL, '').trim().replace(/\/+$/, ''),
-    key: getItem(STORAGE_KEYS.KEY, '').trim(),
+    url: getItem(STORAGE_KEYS.URL, DEFAULT_SUPABASE_URL).trim().replace(/\/+$/, ''),
+    key: getItem(STORAGE_KEYS.KEY, DEFAULT_SUPABASE_KEY).trim(),
     slug: getItem(STORAGE_KEYS.SLUG, 'demo').trim().toLowerCase(),
     autoSync: getItem(STORAGE_KEYS.AUTO_SYNC, 'true') === 'true'
   };
