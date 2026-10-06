@@ -579,6 +579,26 @@
                 <button type="button" id="btnAuthOpenBookingLink" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;">🌐 Открыть</button>
               </div>
             </div>
+
+            <!-- Subscription Status Block -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 12px; color: var(--text-muted);">Тариф и подписка:</span>
+                <span id="authProfileSubscriptionBadge" style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">
+                  🟡 Пробный период
+                </span>
+              </div>
+              <button type="button" id="btnOpenSubscriptionModal" class="btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; color: var(--accent-gold-light); border-color: rgba(212, 175, 55, 0.4); font-weight: 600;">
+                ⭐ Продлить подписку / Тарифы
+              </button>
+            </div>
+
+            <!-- Super-Admin link button (visible only if is_admin) -->
+            <div id="authProfileAdminSection" style="display: none; border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 10px;">
+              <a href="admin.html" class="btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px; font-size: 13px; text-decoration: none;">
+                👑 Панель супер-администратора →
+              </a>
+            </div>
           </div>
           <button type="button" id="btnAuthLogout" class="btn-danger" style="width: 100%; padding: 10px;">
             🚪 Выйти из аккаунта
@@ -657,6 +677,85 @@
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  <!-- Modal: Subscription & Plans (Тарифы и продление) -->
+  <div id="modalSubscription" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 class="modal-title">⭐ Подписка HairStudio</h3>
+        <button class="modal-close" data-close="modalSubscription">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Текущий статус:</div>
+          <div id="subModalCurrentStatusText" style="font-size: 15px; font-weight: 700; color: #fff; margin-top: 2px;">
+            🟡 Пробный период (активен)
+          </div>
+          <div id="subModalExpiresAtText" style="font-size: 12px; color: var(--accent-gold-light); margin-top: 2px;">
+            Действует до: ...
+          </div>
+        </div>
+
+        <div style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 10px;">Выберите тариф продления:</div>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px;">
+          
+          <label style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px 14px; border-radius: var(--radius-md); cursor: pointer;" class="plan-option-card">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="radio" name="subPlanOption" value="1" checked style="accent-color: var(--accent-gold);">
+              <div>
+                <div style="font-weight: 700; font-size: 14px; color: #fff;">1 месяц</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Базовый тариф</div>
+              </div>
+            </div>
+            <div style="font-weight: 700; font-size: 15px; color: var(--accent-gold);">2 990 ₸</div>
+          </label>
+
+          <label style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); border: 1px solid rgba(212, 175, 55, 0.3); padding: 12px 14px; border-radius: var(--radius-md); cursor: pointer; position: relative;" class="plan-option-card">
+            <span style="position: absolute; top: -8px; right: 12px; background: var(--accent-gold); color: #000; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 6px;">ХИТ ПРОДАЖ</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="radio" name="subPlanOption" value="3" style="accent-color: var(--accent-gold);">
+              <div>
+                <div style="font-weight: 700; font-size: 14px; color: #fff;">3 месяца</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Экономия 10%</div>
+              </div>
+            </div>
+            <div style="font-weight: 700; font-size: 15px; color: var(--accent-gold);">7 990 ₸</div>
+          </label>
+
+          <label style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); border: 1px solid var(--border-color); padding: 12px 14px; border-radius: var(--radius-md); cursor: pointer;" class="plan-option-card">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="radio" name="subPlanOption" value="12" style="accent-color: var(--accent-gold);">
+              <div>
+                <div style="font-weight: 700; font-size: 14px; color: #fff;">12 месяцев (1 год)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Максимальная выгода 30%</div>
+              </div>
+            </div>
+            <div style="font-weight: 700; font-size: 15px; color: var(--accent-gold);">24 900 ₸</div>
+          </label>
+
+        </div>
+
+        <div style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; color: #fff; margin-bottom: 6px;">
+            <span>💳 Оплата переводом Kaspi:</span>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px;">
+            1. Переведите выбранную сумму на номер Kaspi Gold:<br>
+            <strong style="color: #fff; font-size: 14px;">+7 (707) 937-26-24</strong> (Рустем А.)
+          </div>
+          <button type="button" id="btnCopyKaspiNumber" class="btn-secondary" style="width: 100%; padding: 8px; font-size: 12px; margin-bottom: 12px;">
+            📋 Скопировать номер Kaspi
+          </button>
+          <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+            2. Нажмите кнопку ниже и отправьте чек или скриншот в WhatsApp. Администратор активирует подписку в течение 5 минут.
+          </div>
+        </div>
+
+        <button type="button" id="btnSendReceiptWhatsapp" class="btn-primary" style="width: 100%; padding: 12px; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          💬 Отправить чек в WhatsApp →
+        </button>
       </div>
     </div>
   </div>
@@ -857,8 +956,8 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=2"></script>
+  <script src="js/supabase-sync.js?v=4"></script>
   <script src="js/db.js?v=29"></script>
-  <script src="js/app.js?v=38"></script>
+  <script src="js/app.js?v=40"></script>
 </body>
 </html>

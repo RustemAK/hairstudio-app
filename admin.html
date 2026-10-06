@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>HairStudio Admin • Панель управления платформой</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="css/style.css?v=21">
+  
+  <style>
+    :root {
+      --admin-bg: #0c0c0e;
+      --admin-card: #151518;
+      --admin-card-hover: #1c1c21;
+      --admin-border: rgba(255, 255, 255, 0.08);
+      --admin-accent: #d4af37;
+      --admin-accent-glow: rgba(212, 175, 55, 0.15);
+      --status-active: #10b981;
+      --status-trial: #f59e0b;
+      --status-expired: #ef4444;
+      --status-lifetime: #8b5cf6;
+    }
+
+    body {
+      background: var(--admin-bg);
+      color: #f3f4f6;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      padding-bottom: 60px;
+    }
+
+    .admin-navbar {
+      background: rgba(18, 18, 22, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--admin-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 14px 20px;
+    }
+
+    .admin-navbar-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .admin-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .admin-brand h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 19px;
+      letter-spacing: 0.5px;
+      margin: 0;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .admin-brand .badge-admin {
+      background: var(--admin-accent-glow);
+      color: var(--admin-accent);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 600;
+    }
+
+    .admin-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .admin-btn {
+      background: var(--admin-card);
+      border: 1px solid var(--admin-border);
+      color: #e5e7eb;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+
+    .admin-btn:hover {
+      background: var(--admin-card-hover);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .admin-btn-primary {
+      background: linear-gradient(135deg, #c59b27, #e0be53);
+      color: #000;
+      border: none;
+      font-weight: 700;
+    }
+
+    .admin-btn-primary:hover {
+      filter: brightness(1.1);
+    }
+
+    .admin-container {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    /* KPI STATS */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-card {
+      background: var(--admin-card);
+      border: 1px solid var(--admin-border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--admin-accent);
+      opacity: 0.6;
+    }
+
+    .kpi-title {
+      font-size: 12px;
+      color: #9ca3af;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .kpi-val {
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .kpi-sub {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    /* FILTER & SEARCH BAR */
+    .controls-bar {
+      background: var(--admin-card);
+      border: 1px solid var(--admin-border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .search-input-wrap {
+      flex: 1;
+      min-width: 260px;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--admin-border);
+      color: #fff;
+      padding: 10px 14px 10px 38px;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: var(--admin-accent);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #6b7280;
+      pointer-events: none;
+    }
+
+    .filter-chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .chip-filter {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--admin-border);
+      color: #9ca3af;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .chip-filter:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .chip-filter.active {
+      background: var(--admin-accent-glow);
+      color: var(--admin-accent);
+      border-color: rgba(212, 175, 55, 0.4);
+      font-weight: 600;
+    }
+
+    /* MASTERS LIST */
+    .masters-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .master-row-card {
+      background: var(--admin-card);
+      border: 1px solid var(--admin-border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .master-row-card:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: var(--admin-card-hover);
+    }
+
+    .master-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .master-info-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .master-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #2a2a32, #181820);
+      border: 1px solid var(--admin-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--admin-accent);
+      flex-shrink: 0;
+    }
+
+    .master-name-block h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 0 0 2px 0;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .master-salon-text {
+      font-size: 13px;
+      color: var(--admin-accent);
+      font-weight: 500;
+    }
+
+    .master-meta-tags {
+      display: flex;
+      gap: 12px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: #9ca3af;
+      flex-wrap: wrap;
+    }
+
+    .master-meta-tags a {
+      color: #9ca3af;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .master-meta-tags a:hover {
+      color: #fff;
+    }
+
+    /* STATUS BADGES */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    .status-badge.active {
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--status-active);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-badge.trial {
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--status-trial);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .status-badge.expired {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--status-expired);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .status-badge.lifetime {
+      background: rgba(139, 92, 246, 0.12);
+      color: var(--status-lifetime);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    /* EXTEND BUTTONS BAR */
+    .master-actions-bar {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .extend-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .extend-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-right: 4px;
+    }
+
+    .btn-extend {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--admin-border);
+      color: #e5e7eb;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-extend:hover {
+      background: var(--admin-accent-glow);
+      color: var(--admin-accent);
+      border-color: rgba(212, 175, 55, 0.4);
+    }
+
+    .btn-extend.custom-extend {
+      background: rgba(212, 175, 55, 0.15);
+      color: var(--admin-accent);
+      border-color: rgba(212, 175, 55, 0.3);
+    }
+
+    .right-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-tool {
+      background: none;
+      border: 1px solid var(--admin-border);
+      color: #9ca3af;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+
+    .btn-tool:hover {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-tool.whatsapp {
+      color: #25d366;
+      border-color: rgba(37, 211, 102, 0.25);
+    }
+
+    .btn-tool.whatsapp:hover {
+      background: rgba(37, 211, 102, 0.1);
+    }
+
+    .btn-tool.danger {
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+
+    .btn-tool.danger:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    /* AUTH OVERLAY / LOGIN CARD */
+    #adminAuthGate {
+      display: none;
+      min-height: 80vh;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .auth-gate-box {
+      background: var(--admin-card);
+      border: 1px solid var(--admin-border);
+      border-radius: 20px;
+      padding: 32px 28px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .auth-gate-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--admin-accent-glow);
+      color: var(--admin-accent);
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px auto;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+
+    /* PAYMENTS MODAL */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      padding: 16px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-box {
+      background: #18181c;
+      border: 1px solid var(--admin-border);
+      border-radius: 18px;
+      padding: 24px;
+      max-width: 560px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ADMIN NAVBAR -->
+  <header class="admin-navbar">
+    <div class="admin-navbar-inner">
+      <div class="admin-brand">
+        <h1>👑 HairStudio <span class="badge-admin">Super-Admin</span></h1>
+      </div>
+      <div class="admin-actions">
+        <button class="admin-btn" id="btnOpenPaymentsModal" title="Журнал платежей">
+          💰 Журнал оплат
+        </button>
+        <a href="index.html" class="admin-btn admin-btn-primary" title="Вернуться в приложение">
+          ✂️ Кабинет мастера →
+        </a>
+        <button class="admin-btn" id="btnAdminLogout" title="Выйти из аккаунта">
+          🚪
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- AUTH GATE (If user is not super-admin) -->
+  <div id="adminAuthGate">
+    <div class="auth-gate-box">
+      <div class="auth-gate-icon">🔒</div>
+      <h2 style="font-family: 'Cinzel', serif; font-size: 22px; margin-bottom: 8px;">Вход в панель управления</h2>
+      <p style="font-size: 13px; color: #9ca3af; margin-bottom: 20px;">
+        Доступ только для владельца платформы HairStudio. Войдите под учетной записью администратора.
+      </p>
+
+      <form id="formAdminLogin" style="display: flex; flex-direction: column; gap: 12px; text-align: left;">
+        <div>
+          <label style="font-size: 12px; color: #9ca3af; display: block; margin-bottom: 4px;">Email администратора</label>
+          <input type="email" id="adminLoginEmail" class="search-input" placeholder="admin@hairstudio.kz" required style="padding-left: 14px;">
+        </div>
+        <div>
+          <label style="font-size: 12px; color: #9ca3af; display: block; margin-bottom: 4px;">Пароль</label>
+          <input type="password" id="adminLoginPassword" class="search-input" placeholder="••••••••" required style="padding-left: 14px;">
+        </div>
+        <button type="submit" class="admin-btn admin-btn-primary" style="width: 100%; justify-content: center; padding: 12px; margin-top: 8px;">
+          Войти как администратор
+        </button>
+      </form>
+      <div style="margin-top: 16px;">
+        <a href="index.html" style="font-size: 12px; color: #6b7280; text-decoration: underline;">
+          ← Вернуться в приложение
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN ADMIN CONTENT -->
+  <main class="admin-container" id="adminMainContent">
+
+    <!-- KPI STATS -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-title">Всего мастеров</div>
+        <div class="kpi-val" id="statTotalMasters">0</div>
+        <div class="kpi-sub">Зарегистрировано на платформе</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Активных подписок</div>
+        <div class="kpi-val" style="color: var(--status-active);" id="statActiveSubscriptions">0</div>
+        <div class="kpi-sub">Оплаченный доступ</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Пробный период (Trial)</div>
+        <div class="kpi-val" style="color: var(--status-trial);" id="statTrialSubscriptions">0</div>
+        <div class="kpi-sub">Новые мастера (14 дней)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Истекших подписок</div>
+        <div class="kpi-val" style="color: var(--status-expired);" id="statExpiredSubscriptions">0</div>
+        <div class="kpi-sub">Требуют продления</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Выручка за месяц (оценочно)</div>
+        <div class="kpi-val" style="color: var(--admin-accent);" id="statEstimatedRevenue">0 ₸</div>
+        <div class="kpi-sub">По активным платным тарифам</div>
+      </div>
+    </div>
+
+    <!-- CONTROLS & FILTERS -->
+    <div class="controls-bar">
+      <div class="search-input-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="adminSearchInput" class="search-input" placeholder="Поиск по имени, салону, телефону, адресу ссылки...">
+      </div>
+
+      <div class="filter-chips">
+        <button class="chip-filter active" data-filter="all">Все (<span id="countAll">0</span>)</button>
+        <button class="chip-filter" data-filter="active">🟢 Активные (<span id="countActive">0</span>)</button>
+        <button class="chip-filter" data-filter="trial">🟡 Пробные (<span id="countTrial">0</span>)</button>
+        <button class="chip-filter" data-filter="expired">🔴 Истекшие (<span id="countExpired">0</span>)</button>
+        <button class="chip-filter" data-filter="blocked">🔒 Заблокированные (<span id="countBlocked">0</span>)</button>
+      </div>
+    </div>
+
+    <!-- MASTERS LIST -->
+    <div class="masters-list" id="mastersListContainer">
+      <div style="text-align: center; padding: 40px; color: #6b7280;">
+        Загрузка списка мастеров...
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MODAL: PAYMENTS HISTORY -->
+  <div class="modal-overlay" id="modalPayments">
+    <div class="modal-box">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="font-size: 18px; font-weight: 700; color: #fff; margin: 0;">💰 Журнал платежей за подписки</h3>
+        <button class="admin-btn" id="btnClosePaymentsModal" style="padding: 4px 10px;">✕</button>
+      </div>
+      <div id="paymentsListContainer" style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="color: #6b7280; font-size: 13px; text-align: center; padding: 20px;">
+          История платежей пуста или не загружена
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toastContainer" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px;"></div>
+
+  <!-- SCRIPTS -->
+  <script src="js/supabase-sync.js?v=21"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      const state = {
+        currentUser: null,
+        currentMaster: null,
+        masters: [],
+        filter: 'all',
+        searchQuery: '',
+        payments: []
+      };
+
+      function showToast(msg, type = 'success') {
+        const c = document.getElementById('toastContainer');
+        const t = document.createElement('div');
+        t.style.cssText = `background: ${type === 'error' ? '#ef4444' : '#10b981'}; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5);`;
+        t.innerText = msg;
+        c.appendChild(t);
+        setTimeout(() => t.remove(), 3500);
+      }
+
+      async function initAdmin() {
+        const sessionRes = await window.HairSupabase.getSession();
+        
+        // Check if logged in master is admin
+        let isAdmin = false;
+        if (sessionRes && sessionRes.authenticated) {
+          state.currentUser = sessionRes.user;
+          state.currentMaster = sessionRes.master;
+          if (sessionRes.master?.is_admin || sessionRes.master?.slug === 'rustem' || sessionRes.user?.email?.includes('rustem')) {
+            isAdmin = true;
+          }
+        }
+
+        // Allow demo/local override if session is not yet loaded
+        if (!isAdmin) {
+          // Check localStorage override or show gate
+          const savedAdmin = localStorage.getItem('hairstudio_admin_authorized');
+          if (savedAdmin === 'true') {
+            isAdmin = true;
+          }
+        }
+
+        if (!isAdmin) {
+          document.getElementById('adminAuthGate').style.display = 'flex';
+          document.getElementById('adminMainContent').style.display = 'none';
+          setupAuthGate();
+          return;
+        }
+
+        document.getElementById('adminAuthGate').style.display = 'none';
+        document.getElementById('adminMainContent').style.display = 'block';
+
+        await loadMasters();
+        setupEventListeners();
+      }
+
+      function setupAuthGate() {
+        const form = document.getElementById('formAdminLogin');
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const email = document.getElementById('adminLoginEmail').value.trim();
+          const pass = document.getElementById('adminLoginPassword').value.trim();
+
+          const res = await window.HairSupabase.signInMaster(email, pass);
+          if (res.ok) {
+            localStorage.setItem('hairstudio_admin_authorized', 'true');
+            showToast('Успешный вход в панель управления!');
+            setTimeout(() => location.reload(), 500);
+          } else {
+            showToast(res.error || 'Ошибка входа', 'error');
+          }
+        });
+      }
+
+      async function loadMasters() {
+        const list = await window.HairSupabase.getAllMastersForAdmin();
+        state.masters = Array.isArray(list) ? list : [];
+        renderDashboard();
+      }
+
+      function getSubscriptionCalculations(m) {
+        const now = new Date();
+        const endsAt = m.subscription_ends_at ? new Date(m.subscription_ends_at) : (m.trial_ends_at ? new Date(m.trial_ends_at) : null);
+        const isLifetime = m.subscription_status === 'lifetime' || (endsAt && endsAt.getFullYear() > now.getFullYear() + 20);
+
+        let status = m.subscription_status || 'trial';
+        let daysLeft = 0;
+        let isExpired = false;
+
+        if (isLifetime) {
+          status = 'lifetime';
+        } else if (endsAt) {
+          const diffMs = endsAt.getTime() - now.getTime();
+          daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+          if (daysLeft <= 0) {
+            isExpired = true;
+            status = 'expired';
+          } else if (status !== 'active') {
+            status = 'trial';
+          }
+        } else {
+          status = 'trial';
+          daysLeft = 14;
+        }
+
+        return { status, daysLeft, isExpired, isLifetime, endsAt };
+      }
+
+      function renderDashboard() {
+        // Compute stats
+        let total = state.masters.length;
+        let active = 0;
+        let trial = 0;
+        let expired = 0;
+        let blocked = 0;
+        let revenue = 0;
+
+        state.masters.forEach(m => {
+          if (!m.is_active) blocked++;
+          const calc = getSubscriptionCalculations(m);
+          if (calc.status === 'lifetime' || calc.status === 'active') {
+            active++;
+            revenue += 2990;
+          } else if (calc.status === 'trial') {
+            trial++;
+          } else if (calc.status === 'expired') {
+            expired++;
+          }
+        });
+
+        document.getElementById('statTotalMasters').innerText = total;
+        document.getElementById('statActiveSubscriptions').innerText = active;
+        document.getElementById('statTrialSubscriptions').innerText = trial;
+        document.getElementById('statExpiredSubscriptions').innerText = expired;
+        document.getElementById('statEstimatedRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
+
+        document.getElementById('countAll').innerText = total;
+        document.getElementById('countActive').innerText = active;
+        document.getElementById('countTrial').innerText = trial;
+        document.getElementById('countExpired').innerText = expired;
+        document.getElementById('countBlocked').innerText = blocked;
+
+        renderMastersList();
+      }
+
+      function renderMastersList() {
+        const container = document.getElementById('mastersListContainer');
+        const q = state.searchQuery.toLowerCase();
+
+        let filtered = state.masters.filter(m => {
+          // Search filter
+          const text = `${m.name || ''} ${m.salon_name || ''} ${m.phone || ''} ${m.slug || ''} ${m.city || ''}`.toLowerCase();
+          if (q && !text.includes(q)) return false;
+
+          // Status filter
+          const calc = getSubscriptionCalculations(m);
+          if (state.filter === 'active') return calc.status === 'active' || calc.status === 'lifetime';
+          if (state.filter === 'trial') return calc.status === 'trial';
+          if (state.filter === 'expired') return calc.status === 'expired';
+          if (state.filter === 'blocked') return !m.is_active;
+
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          container.innerHTML = `
+            <div style="text-align: center; padding: 48px; background: var(--admin-card); border-radius: 14px; border: 1px solid var(--admin-border);">
+              <div style="font-size: 32px; margin-bottom: 8px;">🔍</div>
+              <div style="font-size: 15px; font-weight: 600; color: #fff;">Мастера не найдены</div>
+              <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Попробуйте изменить поисковый запрос или фильтр</div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = '';
+        filtered.forEach(m => {
+          const calc = getSubscriptionCalculations(m);
+          const firstLetter = (m.name || 'М').trim().charAt(0).toUpperCase();
+          const cleanPhone = (m.phone || '').replace(/\D/g, '');
+          const waPhone = cleanPhone.startsWith('8') && cleanPhone.length === 11 ? '7' + cleanPhone.slice(1) : cleanPhone;
+          const bookingUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/book.html?m=${m.slug}`;
+
+          let badgeHtml = '';
+          if (calc.status === 'lifetime') {
+            badgeHtml = `<span class="status-badge lifetime">👑 Бессрочный VIP</span>`;
+          } else if (calc.status === 'active') {
+            badgeHtml = `<span class="status-badge active">🟢 Активна (${calc.daysLeft} дн.)</span>`;
+          } else if (calc.status === 'trial') {
+            badgeHtml = `<span class="status-badge trial">🟡 Пробный (${calc.daysLeft} дн.)</span>`;
+          } else {
+            badgeHtml = `<span class="status-badge expired">🔴 Истекла (${Math.abs(calc.daysLeft)} дн. назад)</span>`;
+          }
+
+          if (!m.is_active) {
+            badgeHtml += ` <span class="status-badge expired" style="margin-left: 6px;">🔒 Заблокирован</span>`;
+          }
+
+          const card = document.createElement('div');
+          card.className = 'master-row-card';
+          card.innerHTML = `
+            <div class="master-card-top">
+              <div class="master-info-main">
+                <div class="master-avatar">${firstLetter}</div>
+                <div class="master-name-block">
+                  <h3>
+                    ${escapeHtml(m.name || 'Мастер')}
+                    ${m.is_admin ? '<span style="font-size: 11px; background: rgba(212, 175, 55, 0.2); color: var(--admin-accent); padding: 1px 6px; border-radius: 4px;">Администратор</span>' : ''}
+                  </h3>
+                  <div class="master-salon-text">✂️ ${escapeHtml(m.salon_name || 'HairStudio')} • ${escapeHtml(m.city || 'Алматы')}</div>
+                  <div class="master-meta-tags">
+                    <span>📞 ${escapeHtml(m.phone || 'без телефона')}</span>
+                    <a href="${bookingUrl}" target="_blank" title="Открыть ссылку онлайн-записи">🌐 /book.html?m=${escapeHtml(m.slug)} ↗</a>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                ${badgeHtml}
+                <div style="font-size: 11px; color: #6b7280; text-align: right; margin-top: 4px;">
+                  ${calc.endsAt ? 'Действует до: ' + calc.endsAt.toLocaleDateString('ru-RU') : 'Срок не установлен'}
+                </div>
+              </div>
+            </div>
+
+            <div class="master-actions-bar">
+              <div class="extend-group">
+                <span class="extend-label">Продлить:</span>
+                <button class="btn-extend" data-action="extend" data-id="${m.id}" data-months="1" data-amount="2990">+1 мес (2 990 ₸)</button>
+                <button class="btn-extend" data-action="extend" data-id="${m.id}" data-months="3" data-amount="7990">+3 мес (7 990 ₸)</button>
+                <button class="btn-extend" data-action="extend" data-id="${m.id}" data-months="12" data-amount="24900">+1 год (24 900 ₸)</button>
+                <button class="btn-extend custom-extend" data-action="extend" data-id="${m.id}" data-months="999" data-amount="0">👑 VIP Бессрочно</button>
+              </div>
+
+              <div class="right-tools">
+                ${waPhone ? `
+                  <a href="https://wa.me/${waPhone}?text=${encodeURIComponent(`Здравствуйте, ${m.name}! Напоминаем по поводу подписки на сервис онлайн-записи HairStudio для салона "${m.salon_name}".`)}" 
+                     target="_blank" class="btn-tool whatsapp" title="Написать в WhatsApp">
+                    💬 WhatsApp
+                  </a>
+                ` : ''}
+                <button class="btn-tool ${m.is_active ? 'danger' : ''}" data-action="toggle-status" data-id="${m.id}" data-active="${m.is_active ? 'true' : 'false'}">
+                  ${m.is_active ? '🔒 Заблокировать' : '🔓 Разблокировать'}
+                </button>
+              </div>
+            </div>
+          `;
+
+          // Event Listeners for extend buttons
+          card.querySelectorAll('[data-action="extend"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const months = parseInt(btn.dataset.months, 10);
+              const amount = parseInt(btn.dataset.amount, 10);
+              const confirmed = confirm(`Продлить подписку для мастера "${m.name}" на ${months === 999 ? 'бессрочно' : months + ' мес.'}? (Сумма: ${amount} ₸)`);
+              if (!confirmed) return;
+
+              btn.innerText = 'Продление...';
+              btn.disabled = true;
+              const res = await window.HairSupabase.adminExtendSubscription(m.id, months, amount, 'kaspi', `Продление через админ-панель на ${months} мес`);
+              if (res.success) {
+                showToast(`✅ Подписка для "${m.name}" успешно продлена!`);
+                await loadMasters();
+              } else {
+                showToast(`Ошибка: ${res.error || 'Не удалось продлить'}`, 'error');
+                btn.disabled = false;
+              }
+            });
+          });
+
+          // Event listener for toggle active
+          card.querySelector('[data-action="toggle-status"]').addEventListener('click', async (e) => {
+            const currentActive = e.target.dataset.active === 'true';
+            const newActive = !currentActive;
+            const ok = confirm(`${newActive ? 'Разблокировать' : 'Заблокировать'} мастера "${m.name}"?`);
+            if (!ok) return;
+
+            e.target.disabled = true;
+            const res = await window.HairSupabase.adminToggleMasterStatus(m.id, newActive);
+            if (res.success) {
+              showToast(`Статус мастера "${m.name}" изменен!`);
+              await loadMasters();
+            } else {
+              showToast('Ошибка при смене статуса', 'error');
+              e.target.disabled = false;
+            }
+          });
+
+          container.appendChild(card);
+        });
+      }
+
+      function setupEventListeners() {
+        // Search
+        document.getElementById('adminSearchInput').addEventListener('input', (e) => {
+          state.searchQuery = e.target.value.trim();
+          renderMastersList();
+        });
+
+        // Filters
+        document.querySelectorAll('.chip-filter').forEach(chip => {
+          chip.addEventListener('click', () => {
+            document.querySelectorAll('.chip-filter').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            state.filter = chip.dataset.filter;
+            renderMastersList();
+          });
+        });
+
+        // Logout
+        document.getElementById('btnAdminLogout').addEventListener('click', async () => {
+          if (confirm('Выйти из панели администратора?')) {
+            localStorage.removeItem('hairstudio_admin_authorized');
+            await window.HairSupabase.signOutMaster();
+            location.href = 'index.html';
+          }
+        });
+
+        // Payments modal
+        const modalPayments = document.getElementById('modalPayments');
+        document.getElementById('btnOpenPaymentsModal').addEventListener('click', async () => {
+          modalPayments.classList.add('active');
+          const pList = await window.HairSupabase.getSubscriptionPayments();
+          renderPaymentsList(pList);
+        });
+
+        document.getElementById('btnClosePaymentsModal').addEventListener('click', () => {
+          modalPayments.classList.remove('active');
+        });
+      }
+
+      function renderPaymentsList(list) {
+        const c = document.getElementById('paymentsListContainer');
+        if (!Array.isArray(list) || list.length === 0) {
+          c.innerHTML = '<div style="color: #6b7280; font-size: 13px; text-align: center; padding: 24px;">Пока нет зафиксированных платежей</div>';
+          return;
+        }
+
+        c.innerHTML = '';
+        list.forEach(p => {
+          const item = document.createElement('div');
+          item.style.cssText = 'background: rgba(255,255,255,0.03); border: 1px solid var(--admin-border); padding: 12px 14px; border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;';
+          item.innerHTML = `
+            <div>
+              <div style="font-weight: 600; color: #fff;">${escapeHtml(p.masters?.name || 'Мастер')} (${escapeHtml(p.masters?.salon_name || 'Салон')})</div>
+              <div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">
+                Метод: ${p.payment_method || 'Kaspi'} • ${new Date(p.created_at).toLocaleString('ru-RU')}
+              </div>
+            </div>
+            <div style="font-size: 15px; font-weight: 700; color: var(--admin-accent);">
+              +${(Number(p.amount) || 0).toLocaleString('ru-RU')} ₸
+            </div>
+          `;
+          c.appendChild(item);
+        });
+      }
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      document.addEventListener('DOMContentLoaded', initAdmin);
+
+    })();
+  </script>
+</body>
+</html>

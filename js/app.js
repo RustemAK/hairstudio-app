@@ -169,6 +169,23 @@ function timesOverlap(start1, end1, start2, end2) {
   return Math.max(s1, s2) < Math.min(e1, e2);
 }
 
+// Phone normalization helpers for Kazakhstan (+7 7XX XXX-XX-XX)
+function cleanPhoneForWhatsapp(phone) {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('8')) {
+    digits = '7' + digits.slice(1);
+  } else if (digits.length === 10 && !digits.startsWith('7')) {
+    digits = '7' + digits;
+  }
+  return digits;
+}
+
+function cleanPhoneForTel(phone) {
+  const digits = cleanPhoneForWhatsapp(phone);
+  return digits ? `+${digits}` : '';
+}
+
 // ================= TOAST NOTIFICATIONS =================
 function showToast(message, type = 'success') {
   const container = document.getElementById('toastContainer');
@@ -1141,6 +1158,48 @@ function updateAuthUI(isLoggedIn) {
       const firstChar = displayName.trim().charAt(0).toUpperCase() || '✂️';
       profileAvatar.innerText = firstChar;
     }
+
+    // Subscription status calculation
+    const subBadge = document.getElementById('authProfileSubscriptionBadge');
+    const adminSection = document.getElementById('authProfileAdminSection');
+
+    const now = new Date();
+    const endsAt = master.subscription_ends_at ? new Date(master.subscription_ends_at) : (master.trial_ends_at ? new Date(master.trial_ends_at) : null);
+    const isLifetime = master.subscription_status === 'lifetime' || (endsAt && endsAt.getFullYear() > now.getFullYear() + 20);
+
+    if (subBadge) {
+      if (isLifetime) {
+        subBadge.innerText = '👑 VIP Бессрочно';
+        subBadge.style.color = '#8b5cf6';
+        subBadge.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+        subBadge.style.background = 'rgba(139, 92, 246, 0.15)';
+      } else if (endsAt) {
+        const diffDays = Math.ceil((endsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 0) {
+          subBadge.innerText = `🔴 Истекла (${Math.abs(diffDays)} дн. назад)`;
+          subBadge.style.color = '#ef4444';
+          subBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          subBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+        } else if (master.subscription_status === 'active') {
+          subBadge.innerText = `🟢 Активна (${diffDays} дн.)`;
+          subBadge.style.color = '#10b981';
+          subBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+          subBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+        } else {
+          subBadge.innerText = `🟡 Пробный (${diffDays} дн.)`;
+          subBadge.style.color = '#f59e0b';
+          subBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+          subBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+        }
+      } else {
+        subBadge.innerText = '🟡 Пробный период';
+      }
+    }
+
+    if (adminSection) {
+      const isAdmin = Boolean(master.is_admin || master.slug === 'rustem' || (user.email && user.email.includes('rustem')));
+      adminSection.style.display = isAdmin ? 'block' : 'none';
+    }
   } else {
     if (btnAuthProfile) {
       btnAuthProfile.title = 'Войти в аккаунт мастера';
@@ -1242,6 +1301,65 @@ function setupAuthEventListeners() {
     btnOpenProfileLink.addEventListener('click', () => {
       const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
       window.open(getMasterBookingUrl(slug), '_blank');
+    });
+  }
+
+  // Subscription modal triggers & payment
+  const btnOpenSub = document.getElementById('btnOpenSubscriptionModal');
+  if (btnOpenSub) {
+    btnOpenSub.addEventListener('click', () => {
+      const master = state.currentMaster || {};
+      const now = new Date();
+      const endsAt = master.subscription_ends_at ? new Date(master.subscription_ends_at) : (master.trial_ends_at ? new Date(master.trial_ends_at) : null);
+      const isLifetime = master.subscription_status === 'lifetime' || (endsAt && endsAt.getFullYear() > now.getFullYear() + 20);
+
+      const statusEl = document.getElementById('subModalCurrentStatusText');
+      const expiresEl = document.getElementById('subModalExpiresAtText');
+      if (statusEl) {
+        statusEl.innerText = isLifetime ? '👑 Бессрочный VIP' : (master.subscription_status === 'active' ? '🟢 Подписка активна' : '🟡 Пробный период');
+      }
+      if (expiresEl) {
+        expiresEl.innerText = isLifetime ? 'Действует бессрочно' : (endsAt ? `Действует до: ${endsAt.toLocaleDateString('ru-RU')}` : 'Действует 14 дней');
+      }
+
+      openModal('modalSubscription');
+    });
+  }
+
+  const btnCopyKaspi = document.getElementById('btnCopyKaspiNumber');
+  if (btnCopyKaspi) {
+    btnCopyKaspi.addEventListener('click', () => {
+      const phone = '+77079372624';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(phone).then(() => {
+          showToast('Номер Kaspi скопирован: +7 707 937-26-24');
+        }).catch(() => {
+          prompt('Номер Kaspi для перевода:', phone);
+        });
+      } else {
+        prompt('Номер Kaspi для перевода:', phone);
+      }
+    });
+  }
+
+  const btnSendReceipt = document.getElementById('btnSendReceiptWhatsapp');
+  if (btnSendReceipt) {
+    btnSendReceipt.addEventListener('click', () => {
+      const selectedRadio = document.querySelector('input[name="subPlanOption"]:checked');
+      const months = selectedRadio ? selectedRadio.value : '1';
+      let planName = '1 месяц (2 990 ₸)';
+      if (months === '3') planName = '3 месяца (7 990 ₸)';
+      if (months === '12') planName = '12 месяцев (24 900 ₸)';
+
+      const master = state.currentMaster || {};
+      const salon = master.salon_name || safeStorage.get('hairstudio_studio_name', 'HairStudio');
+      const name = master.name || 'Мастер';
+      const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
+
+      const waMsg = `Здравствуйте! Я оплатил(а) подписку HairStudio.\n\n✂️ Салон: ${salon}\n👤 Мастер: ${name}\n🌐 Адрес ссылки: /book.html?m=${slug}\n⭐ Выбранный тариф: ${planName}\n\nПрикрепляю чек/квитанцию перевода Kaspi:`;
+      
+      const waUrl = `https://wa.me/77079372624?text=${encodeURIComponent(waMsg)}`;
+      window.open(waUrl, '_blank');
     });
   }
 
@@ -1581,12 +1699,65 @@ async function triggerAutoSyncSlots() {
   }
 }
 
+async function triggerSyncMasterServices() {
+  if (!window.HairSupabase || !window.HairSupabase.syncMasterServices) return;
+  try {
+    const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
+    if (!targetMasterId) return;
+    await window.HairSupabase.syncMasterServices(targetMasterId, state.services);
+  } catch (e) {
+    console.warn('Auto sync master services failed:', e);
+  }
+}
+
+function playBookingNotificationSound() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    const now = ctx.currentTime;
+    
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(659.25, now); // E5
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(987.77, now + 0.12); // B5
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc1.stop(now + 0.15);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.8);
+  } catch (e) {}
+}
+
 async function checkOnlineBookings(notify = false) {
   if (!window.HairSupabase) return;
   try {
     const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
     const bookings = await window.HairSupabase.getPendingBookings(targetMasterId);
+    const prevCount = Array.isArray(state.pendingBookings) ? state.pendingBookings.length : 0;
     state.pendingBookings = Array.isArray(bookings) ? bookings : [];
+    const newCount = state.pendingBookings.length;
+
+    // Trigger audio chime if new online booking arrived
+    if (newCount > prevCount && prevCount >= 0) {
+      playBookingNotificationSound();
+      showToast(`🔔 Новая онлайн-заявка от клиента! (${newCount})`, 'info');
+    }
 
     const badge = document.getElementById('bookingBadge');
     if (badge) {
@@ -1684,7 +1855,7 @@ async function handleAcceptBooking(bookingId) {
 
   // Check for time collision with existing appointments
   const existingSameDay = state.appointments.filter(a => a.date === b.date && a.status !== 'cancelled');
-  const collision = existingSameDay.find(a => timesOverlap(b.start_time, b.end_time, a.startTime, a.endTime || a.startTime));
+  const collision = existingSameDay.find(a => timesOverlap(b.start_time, b.end_time, a.startTime, a.endTime || addMinutesToTime(a.startTime, 60)));
 
   if (collision) {
     const ok = confirm(`Внимание! На это время (${b.start_time} - ${b.end_time}) уже есть запись:\n"${collision.clientName}" (${collision.startTime} - ${collision.endTime || ''}).\n\nВсе равно принять запись онлайн?`);
@@ -1741,12 +1912,23 @@ async function handleAcceptBooking(bookingId) {
     triggerAutoSyncSlots();
 
     // 5. Open WhatsApp chat with prefilled template
-    const cleanPhone = (b.client_phone || '').replace(/\D/g, '');
+    const cleanPhone = cleanPhoneForWhatsapp(b.client_phone);
+
     const address = safeStorage.get('hairstudio_master_address', 'пр. Абая 150');
     const waText = `Здравствуйте, ${b.client_name}!\n\nВаша запись подтверждена ✅\n✂️ Услуга: ${b.service_names}\n📅 Дата: ${formatFullDate(b.date)}\n⏰ Время: ${b.start_time} - ${b.end_time}\n📍 Адрес: ${address}\n\nЖдем вас! Если планы изменятся, пожалуйста, предупредите заранее.`;
 
     if (cleanPhone) {
-      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`, '_blank');
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`;
+      // Mobile Safari / Chrome blocks window.open after async awaits - use location.href on mobile or fallback
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.location.href = waUrl;
+      } else {
+        const opened = window.open(waUrl, '_blank');
+        if (!opened || opened.closed || typeof opened.closed === 'undefined') {
+          window.location.href = waUrl;
+        }
+      }
     }
 
     showToast('Запись принята и добавлена в расписание!');
@@ -1777,10 +1959,19 @@ async function handleRejectBooking(bookingId) {
     }
 
     // Open WhatsApp with polite reschedule message
-    const cleanPhone = (b.client_phone || '').replace(/\D/g, '');
+    const cleanPhone = cleanPhoneForWhatsapp(b.client_phone);
     if (cleanPhone) {
       const waText = `Здравствуйте, ${b.client_name}!\n\nК сожалению, ${formatFullDate(b.date)} в ${b.start_time} я не смогу вас принять (время занято).\nМогу предложить свободные окна в другой день. Подскажите, когда вам удобно?`;
-      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`, '_blank');
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`;
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.location.href = waUrl;
+      } else {
+        const opened = window.open(waUrl, '_blank');
+        if (!opened || opened.closed || typeof opened.closed === 'undefined') {
+          window.location.href = waUrl;
+        }
+      }
     }
 
     showToast('Заявка отклонена');
@@ -1937,9 +2128,9 @@ function renderSchedule() {
     const card = document.createElement('div');
     card.className = 'appointment-card' + (isPast ? ' is-past' : '') + (app.status === 'cancelled' ? ' status-cancelled' : '') + (isCompact ? ' compact' : '');
 
-    const phoneClean = (app.clientPhone || '').replace(/\D/g, '');
+    const phoneClean = cleanPhoneForWhatsapp(app.clientPhone);
     const waLink = phoneClean ? `https://wa.me/${phoneClean}` : null;
-    const telLink = phoneClean ? `tel:+${phoneClean}` : null;
+    const telLink = phoneClean ? `tel:${cleanPhoneForTel(app.clientPhone)}` : null;
 
     if (isCompact) {
       // COMPACT CARD (NO PRICE, NO STATUS BADGE)
@@ -2576,6 +2767,7 @@ async function handleServiceSubmit(e) {
 
   closeModal('modalService');
   await reloadData();
+  triggerSyncMasterServices();
 }
 
 async function handleServiceDelete() {
@@ -2594,6 +2786,7 @@ async function handleServiceDelete() {
     closeModal('modalService');
     showToast('Услуга удалена');
     await reloadData();
+    triggerSyncMasterServices();
   }
 }
 
@@ -2747,9 +2940,9 @@ function renderClients(searchQuery = '') {
       .filter(isAppointmentCompleted)
       .reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
 
-    const phoneClean = (c.phone || '').replace(/\D/g, '');
+    const phoneClean = cleanPhoneForWhatsapp(c.phone);
     const waLink = phoneClean ? `https://wa.me/${phoneClean}` : null;
-    const telLink = phoneClean ? `tel:+${phoneClean}` : null;
+    const telLink = phoneClean ? `tel:${cleanPhoneForTel(c.phone)}` : null;
 
     const card = document.createElement('div');
     card.className = 'data-item-card';
@@ -2788,11 +2981,11 @@ function openClientDetailsModal(client, clientApps) {
   document.getElementById('clientDetailsNotes').value = client.notes || '';
 
   // Actions
-  const phoneClean = (client.phone || '').replace(/\D/g, '');
+  const phoneClean = cleanPhoneForWhatsapp(client.phone);
   const actionsBox = document.getElementById('clientDetailsActions');
   actionsBox.innerHTML = `
     ${phoneClean ? `<a href="https://wa.me/${phoneClean}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp">💬</a>` : ''}
-    ${phoneClean ? `<a href="tel:+${phoneClean}" class="btn-action-small call">📞</a>` : ''}
+    ${phoneClean ? `<a href="tel:${cleanPhoneForTel(client.phone)}" class="btn-action-small call">📞</a>` : ''}
   `;
 
   // History list

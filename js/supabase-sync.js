@@ -63,7 +63,35 @@
   }
 
   // ================= AUTH SESSION HELPER =================
+  function parseHashSession() {
+    if (typeof window === 'undefined' || !window.location.hash) return null;
+    try {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      const expiresIn = params.get('expires_in');
+      if (accessToken) {
+        const session = {
+          access_token: accessToken,
+          refresh_token: refreshToken || '',
+          expires_at: expiresIn ? (Math.floor(Date.now() / 1000) + Number(expiresIn)) : null
+        };
+        saveStoredSession(session);
+        try {
+          history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        } catch (e) {}
+        return session;
+      }
+    } catch (e) {
+      console.warn('Error parsing hash session:', e);
+    }
+    return null;
+  }
+
   function getStoredSession() {
+    const hashSession = parseHashSession();
+    if (hashSession) return hashSession;
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
       if (!raw) return null;
@@ -165,7 +193,10 @@
     }
 
     try {
-      const signupEndpoint = `${config.url}/auth/v1/signup`;
+      const redirectUrl = (typeof window !== 'undefined' && window.location.origin)
+        ? `${window.location.origin}${window.location.pathname}`
+        : '';
+      const signupEndpoint = `${config.url}/auth/v1/signup${redirectUrl ? `?redirect_to=${encodeURIComponent(redirectUrl)}` : ''}`;
       const res = await fetch(signupEndpoint, {
         method: 'POST',
         headers: getHeaders(false),
@@ -318,30 +349,89 @@
   }
 
   /**
-   * Check Current Session / User
+   * Refresh Supabase Session using Refresh Token
+   */
+  async function refreshSession(refreshToken) {
+    if (!refreshToken || !isConfigured()) return null;
+    try {
+      const endpoint = `${config.url}/auth/v1/token?grant_type=refresh_token`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'apikey': config.key,
+          'Authorization': `Bearer ${config.key}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      if (!res.ok) return null;
+      const newSession = await res.json();
+      if (newSession && newSession.access_token) {
+        saveStoredSession(newSession);
+        return newSession;
+      }
+    } catch (e) {
+      console.warn('refreshSession error:', e);
+    }
+    return null;
+  }
+
+  /**
+   * Check Current Session / User with Auto-Refresh
    */
   async function getSession() {
-    const session = getStoredSession();
+    let session = getStoredSession();
     if (!session || !session.access_token) {
       return { authenticated: false, session: null, user: null, master: null };
     }
 
-    // Try verifying user from cloud
+    // Auto-refresh token if close to expiry (within 2 minutes)
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (session.expires_at && (session.expires_at - nowSec < 120) && session.refresh_token) {
+      const refreshed = await refreshSession(session.refresh_token);
+      if (refreshed) session = refreshed;
+    }
+
+    // Verify user from cloud
     if (isConfigured()) {
       try {
         const userRes = await fetch(`${config.url}/auth/v1/user`, {
-          headers: getHeaders(true)
+          headers: {
+            'apikey': config.key,
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          }
         });
         if (userRes.ok) {
           const user = await userRes.json();
           const master = await getMasterByUserId(user.id);
           return { authenticated: true, session, user, master };
         } else if (userRes.status === 401) {
-          // Token expired, clear
+          // Token expired, attempt refresh before logging out
+          if (session.refresh_token) {
+            const refreshed = await refreshSession(session.refresh_token);
+            if (refreshed) {
+              const retryUserRes = await fetch(`${config.url}/auth/v1/user`, {
+                headers: {
+                  'apikey': config.key,
+                  'Authorization': `Bearer ${refreshed.access_token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              if (retryUserRes.ok) {
+                const user = await retryUserRes.json();
+                const master = await getMasterByUserId(user.id);
+                return { authenticated: true, session: refreshed, user, master };
+              }
+            }
+          }
+          // Refresh failed, clear session
           saveStoredSession(null);
           return { authenticated: false, session: null, user: null, master: null };
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('getSession network error, using cached session:', e);
+      }
     }
 
     return { authenticated: true, session, user: session.user, master: null };
@@ -475,6 +565,7 @@
 
   /**
    * Fetch Master's Busy Slots for a given Date
+   * Uses get_master_busy_intervals RPC to combine calendar slots + pending/confirmed booking requests without leaking PII
    */
   async function getBusySlots(masterId, dateStr) {
     if (!dateStr) return [];
@@ -495,8 +586,29 @@
       return slots;
     }
 
+    const targetId = masterId || mockStore.master.id;
+
+    // 1. Try secure RPC function (includes master_busy_slots + active booking_requests)
     try {
-      const endpoint = `${config.url}/rest/v1/master_busy_slots?master_id=eq.${encodeURIComponent(masterId)}&date=eq.${encodeURIComponent(dateStr)}&select=date,start_time,end_time`;
+      const rpcEndpoint = `${config.url}/rest/v1/rpc/get_master_busy_intervals`;
+      const rpcRes = await fetch(rpcEndpoint, {
+        method: 'POST',
+        headers: getHeaders(false),
+        body: JSON.stringify({ p_master_id: targetId, p_date: dateStr })
+      });
+      if (rpcRes.ok) {
+        const rpcList = await rpcRes.json();
+        if (Array.isArray(rpcList)) {
+          return rpcList;
+        }
+      }
+    } catch (rpcErr) {
+      console.warn('RPC get_master_busy_intervals fallback:', rpcErr);
+    }
+
+    // 2. Direct fallback on master_busy_slots table
+    try {
+      const endpoint = `${config.url}/rest/v1/master_busy_slots?master_id=eq.${encodeURIComponent(targetId)}&date=eq.${encodeURIComponent(dateStr)}&select=date,start_time,end_time`;
       const res = await fetch(endpoint, { headers: getHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const list = await res.json();
@@ -520,6 +632,21 @@
   }
 
   /**
+   * Helper: Normalize phone for Kazakhstan / WhatsApp (+7 7XX XXX-XX-XX)
+   */
+  function normalizePhone(rawPhone) {
+    if (!rawPhone) return '';
+    let digits = String(rawPhone).replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('8')) {
+      digits = '7' + digits.slice(1);
+    }
+    if (digits.length === 10 && !digits.startsWith('7')) {
+      digits = '7' + digits;
+    }
+    return digits;
+  }
+
+  /**
    * Client Submits a Booking Request
    */
   async function submitBooking(bookingData) {
@@ -527,10 +654,17 @@
       throw new Error('Заполните обязательные поля: Имя, Телефон, Дату и Время');
     }
 
+    let rawPhone = String(bookingData.client_phone).trim();
+    let digits = normalizePhone(rawPhone);
+    let formattedPhone = rawPhone;
+    if (digits.length === 11) {
+      formattedPhone = `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`;
+    }
+
     const payload = {
       master_id: bookingData.master_id || mockStore.master.id,
       client_name: String(bookingData.client_name).trim(),
-      client_phone: String(bookingData.client_phone).trim(),
+      client_phone: formattedPhone,
       date: bookingData.date,
       start_time: bookingData.start_time,
       end_time: bookingData.end_time || addMinutes(bookingData.start_time, bookingData.duration_min || 60),
@@ -560,15 +694,19 @@
       const endpoint = `${config.url}/rest/v1/booking_requests`;
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: getHeaders(false),
+        headers: {
+          'apikey': config.key,
+          'Authorization': `Bearer ${config.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
         const errorText = await res.text();
         throw new Error(`Ошибка отправки заявки (${res.status}): ${errorText}`);
       }
-      const created = await res.json();
-      return { success: true, booking: Array.isArray(created) ? created[0] : created };
+      return { success: true, booking: payload };
     } catch (err) {
       console.error('Submit booking failed:', err);
       throw err;
@@ -668,6 +806,172 @@
     }
   }
 
+  /**
+   * Sync Master Services to Cloud (Supabase)
+   * Called when master adds/edits/deletes a service locally
+   */
+  async function syncMasterServices(masterId, localServices) {
+    if (!Array.isArray(localServices)) return { success: false };
+    if (!isConfigured()) return { success: false, error: 'Not configured' };
+
+    const targetId = masterId || mockStore.master.id;
+
+    const cloudServices = localServices.map(s => ({
+      master_id: targetId,
+      name: s.name,
+      category: s.category || 'Другое',
+      duration_min: Number(s.duration) || 60,
+      sort_order: Number(s.id) || 0,
+      is_active: true
+    }));
+
+    try {
+      // Delete existing services for this master
+      const deleteEndpoint = `${config.url}/rest/v1/master_services?master_id=eq.${encodeURIComponent(targetId)}`;
+      await fetch(deleteEndpoint, { method: 'DELETE', headers: getHeaders(true) });
+
+      // Insert current services
+      if (cloudServices.length > 0) {
+        const insertEndpoint = `${config.url}/rest/v1/master_services`;
+        const res = await fetch(insertEndpoint, {
+          method: 'POST',
+          headers: getHeaders(true),
+          body: JSON.stringify(cloudServices)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      }
+      return { success: true, count: cloudServices.length };
+    } catch (err) {
+      console.error('syncMasterServices error:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * ==========================================
+   * SUPER-ADMIN API METHODS
+   * ==========================================
+   */
+
+  /**
+   * Admin: Fetch all masters
+   */
+  async function getAllMastersForAdmin() {
+    if (!isConfigured()) return [mockStore.master];
+
+    try {
+      const endpoint = `${config.url}/rest/v1/masters?select=*&order=created_at.desc`;
+      const res = await fetch(endpoint, { headers: getHeaders(true) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = await res.json();
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      console.error('getAllMastersForAdmin error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Admin: Extend subscription (via RPC with PATCH fallback)
+   */
+  async function adminExtendSubscription(masterId, months = 1, amount = 2990, paymentMethod = 'kaspi', notes = '') {
+    if (!masterId) return { success: false, error: 'No masterId' };
+    if (!isConfigured()) return { success: true, isMock: true };
+
+    // 1. Try RPC admin_extend_subscription
+    try {
+      const rpcEndpoint = `${config.url}/rest/v1/rpc/admin_extend_subscription`;
+      const rpcRes = await fetch(rpcEndpoint, {
+        method: 'POST',
+        headers: getHeaders(true),
+        body: JSON.stringify({
+          p_master_id: masterId,
+          p_months: months,
+          p_amount: amount,
+          p_payment_method: paymentMethod,
+          p_notes: notes
+        })
+      });
+      if (rpcRes.ok) {
+        const data = await rpcRes.json();
+        return data || { success: true };
+      }
+    } catch (rpcErr) {
+      console.warn('RPC admin_extend_subscription failed, using PATCH fallback:', rpcErr);
+    }
+
+    // 2. Direct PATCH fallback on masters table
+    try {
+      const now = new Date();
+      let newEnd;
+      if (months === 999) {
+        newEnd = new Date(now.getFullYear() + 100, now.getMonth(), now.getDate()).toISOString();
+      } else {
+        const futureDate = new Date();
+        futureDate.setMonth(futureDate.getMonth() + months);
+        newEnd = futureDate.toISOString();
+      }
+
+      const patchEndpoint = `${config.url}/rest/v1/masters?id=eq.${encodeURIComponent(masterId)}`;
+      const res = await fetch(patchEndpoint, {
+        method: 'PATCH',
+        headers: getHeaders(true),
+        body: JSON.stringify({
+          subscription_status: months === 999 ? 'lifetime' : 'active',
+          subscription_plan: months === 1 ? 'monthly' : months === 3 ? 'quarterly' : months === 12 ? 'yearly' : 'lifetime',
+          subscription_ends_at: newEnd,
+          is_active: true
+        })
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return { success: true, new_ends_at: newEnd };
+    } catch (err) {
+      console.error('adminExtendSubscription error:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Admin: Toggle Master Active / Blocked Status
+   */
+  async function adminToggleMasterStatus(masterId, isActive) {
+    if (!masterId) return { success: false };
+    if (!isConfigured()) return { success: true };
+
+    try {
+      const endpoint = `${config.url}/rest/v1/masters?id=eq.${encodeURIComponent(masterId)}`;
+      const res = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: getHeaders(true),
+        body: JSON.stringify({ is_active: Boolean(isActive) })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return { success: true };
+    } catch (err) {
+      console.error('adminToggleMasterStatus error:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Admin: Get all subscription payments log
+   */
+  async function getSubscriptionPayments() {
+    if (!isConfigured()) return [];
+
+    try {
+      const endpoint = `${config.url}/rest/v1/subscription_payments?select=*,masters(name,slug,salon_name,phone)&order=created_at.desc`;
+      const res = await fetch(endpoint, { headers: getHeaders(true) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = await res.json();
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      console.warn('getSubscriptionPayments error:', err);
+      return [];
+    }
+  }
+
   // Public API export
   return {
     config,
@@ -685,6 +989,11 @@
     submitBooking,
     getPendingBookings,
     updateBookingStatus,
-    syncMasterBusySlots
+    syncMasterBusySlots,
+    syncMasterServices,
+    getAllMastersForAdmin,
+    adminExtendSubscription,
+    adminToggleMasterStatus,
+    getSubscriptionPayments
   };
 });

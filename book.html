@@ -723,77 +723,93 @@
       </div>
     </header>
 
-    <!-- 2. Select Services (NO PRICES!) -->
-    <section class="section-card">
-      <div class="section-header">
-        <h2 class="section-title">
-          <span>1. Выберите услуги</span>
-        </h2>
-        <span class="section-badge" id="selectedCountBadge">Выбрано: 0</span>
+    <!-- Inactive / Expired Notice -->
+    <div id="bookingInactiveNotice" style="display: none; background: var(--bg-card); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: var(--radius-lg); padding: 32px 20px; text-align: center; box-shadow: var(--shadow-card);">
+      <div style="font-size: 40px; margin-bottom: 12px;">⏸️</div>
+      <h2 style="font-size: 18px; font-weight: 700; color: #f87171; margin-bottom: 8px;">Онлайн-запись временно приостановлена</h2>
+      <p style="font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 20px;">
+        Мастер временно не принимает онлайн-записи через сайт. Вы можете связаться с мастером напрямую:
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <a href="#" id="linkInactiveWhatsapp" class="btn-contact whatsapp" target="_blank" rel="noopener" style="padding: 13px; font-size: 14px; font-weight: 700;">
+          <span>💬</span> Написать мастеру в WhatsApp
+        </a>
       </div>
+    </div>
 
-      <!-- Categories Filter -->
-      <div class="chips-row" id="serviceCategoryChips">
-        <button type="button" class="chip-btn active" data-category="all">Все</button>
-        <button type="button" class="chip-btn" data-category="Стрижки">Стрижки</button>
-        <button type="button" class="chip-btn" data-category="Окрашивание">Окрашивание</button>
-        <button type="button" class="chip-btn" data-category="Уход">Уход</button>
-      </div>
+    <div id="bookingStepsWrapper" style="display: flex; flex-direction: column; gap: 16px;">
+      <!-- 2. Select Services (NO PRICES!) -->
+      <section class="section-card">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span>1. Выберите услуги</span>
+          </h2>
+          <span class="section-badge" id="selectedCountBadge">Выбрано: 0</span>
+        </div>
 
-      <!-- Services List (Duration only, no price) -->
-      <div class="services-list" id="servicesList">
-        <div class="no-slots-alert">Загрузка услуг...</div>
-      </div>
+        <!-- Categories Filter -->
+        <div class="chips-row" id="serviceCategoryChips">
+          <button type="button" class="chip-btn active" data-category="all">Все</button>
+          <button type="button" class="chip-btn" data-category="Стрижки">Стрижки</button>
+          <button type="button" class="chip-btn" data-category="Окрашивание">Окрашивание</button>
+          <button type="button" class="chip-btn" data-category="Уход">Уход</button>
+        </div>
 
-      <!-- Summary duration badge -->
-      <div class="duration-summary" id="durationSummary" style="display: none;">
-        <span>⏱️ Расчетное время визита:</span>
-        <strong id="totalDurationText">45 мин</strong>
-      </div>
-    </section>
+        <!-- Services List (Duration only, no price) -->
+        <div class="services-list" id="servicesList">
+          <div class="no-slots-alert">Загрузка услуг...</div>
+        </div>
 
-    <!-- 3. Select Date and Free Time Slot -->
-    <section class="section-card">
-      <div class="section-header">
-        <h2 class="section-title">
-          <span>2. Дата и свободное время</span>
-        </h2>
-      </div>
+        <!-- Summary duration badge -->
+        <div class="duration-summary" id="durationSummary" style="display: none;">
+          <span>⏱️ Расчетное время визита:</span>
+          <strong id="totalDurationText">45 мин</strong>
+        </div>
+      </section>
 
-      <!-- Horizontal Date Strip (14 days) -->
-      <div class="date-scroll-wrap" id="bookingDateStrip">
-        <!-- Generated dynamically via JS -->
-      </div>
+      <!-- 3. Select Date and Free Time Slot -->
+      <section class="section-card">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span>2. Дата и свободное время</span>
+          </h2>
+        </div>
 
-      <!-- Time Slots Grid -->
-      <div id="slotsContainer" style="display: flex; flex-direction: column; gap: 12px;">
-        <div class="no-slots-alert">Выберите услугу и дату для отображения свободных окон</div>
-      </div>
-    </section>
+        <!-- Horizontal Date Strip (14 days) -->
+        <div class="date-scroll-wrap" id="bookingDateStrip">
+          <!-- Generated dynamically via JS -->
+        </div>
 
-    <!-- 4. Client Contact Form -->
-    <section class="section-card">
-      <div class="section-header">
-        <h2 class="section-title">
-          <span>3. Ваши контакты</span>
-        </h2>
-      </div>
+        <!-- Time Slots Grid -->
+        <div id="slotsContainer" style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="no-slots-alert">Выберите услугу и дату для отображения свободных окон</div>
+        </div>
+      </section>
 
-      <div class="form-group">
-        <label class="form-label" for="clientNameInput">Ваше имя *</label>
-        <input type="text" id="clientNameInput" class="form-input" placeholder="Например: Арман" required autocomplete="name">
-      </div>
+      <!-- 4. Client Contact Form -->
+      <section class="section-card">
+        <div class="section-header">
+          <h2 class="section-title">
+            <span>3. Ваши контакты</span>
+          </h2>
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="clientPhoneInput">Номер WhatsApp *</label>
-        <input type="tel" id="clientPhoneInput" class="form-input" placeholder="+7 (701) 000-00-00" required autocomplete="tel">
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="clientNameInput">Ваше имя *</label>
+          <input type="text" id="clientNameInput" class="form-input" placeholder="Например: Арман" required autocomplete="name">
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="clientNoteInput">Пожелание или комментарий (необязательно)</label>
-        <textarea id="clientNoteInput" class="form-textarea" placeholder="Длина волос, пожелания или вопросы..."></textarea>
-      </div>
-    </section>
+        <div class="form-group">
+          <label class="form-label" for="clientPhoneInput">Номер WhatsApp *</label>
+          <input type="tel" id="clientPhoneInput" class="form-input" placeholder="+7 (701) 000-00-00" required autocomplete="tel">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="clientNoteInput">Пожелание или комментарий (необязательно)</label>
+          <textarea id="clientNoteInput" class="form-textarea" placeholder="Длина волос, пожелания или вопросы..."></textarea>
+        </div>
+      </section>
+    </div>
 
   </div>
 
@@ -853,7 +869,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=2"></script>
+  <script src="js/supabase-sync.js?v=4"></script>
   <script>
     (function () {
       'use strict';
@@ -942,14 +958,66 @@
         });
       }
 
+      function isMasterBookingActive(master) {
+        if (!master) return false;
+        if (master.is_active === false) return false;
+        if (master.subscription_status === 'expired') return false;
+
+        if (master.subscription_ends_at) {
+          const subEnd = new Date(master.subscription_ends_at).getTime();
+          if (subEnd < Date.now()) {
+            if (master.trial_ends_at) {
+              const trialEnd = new Date(master.trial_ends_at).getTime();
+              if (trialEnd < Date.now()) return false;
+            } else {
+              return false;
+            }
+          }
+        } else if (master.trial_ends_at) {
+          const trialEnd = new Date(master.trial_ends_at).getTime();
+          if (trialEnd < Date.now()) return false;
+        }
+
+        return true;
+      }
+
+      function showInactiveBooking(master) {
+        const stepsWrap = document.getElementById('bookingStepsWrapper');
+        if (stepsWrap) stepsWrap.style.display = 'none';
+
+        const bottomBar = document.querySelector('.bottom-booking-bar');
+        if (bottomBar) bottomBar.style.display = 'none';
+
+        const notice = document.getElementById('bookingInactiveNotice');
+        if (notice) {
+          notice.style.display = 'block';
+          const waLink = document.getElementById('linkInactiveWhatsapp');
+          if (waLink && master.phone) {
+            let cleanPhone = master.phone.replace(/\D/g, '');
+            if (cleanPhone.length === 11 && cleanPhone.startsWith('8')) cleanPhone = '7' + cleanPhone.slice(1);
+            else if (cleanPhone.length === 10 && !cleanPhone.startsWith('7')) cleanPhone = '7' + cleanPhone;
+            waLink.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent('Здравствуйте! Хочу записаться к вам на приём')}`;
+          }
+        }
+      }
+
       async function loadMasterData() {
         const urlParams = new URLSearchParams(window.location.search);
         const slug = urlParams.get('m') || 'demo';
 
         try {
           const master = await window.HairSupabase.getMaster(slug);
+          if (!master) {
+            document.getElementById('masterName').innerText = 'Мастер не найден';
+            return;
+          }
           bookingState.master = master;
           renderMasterProfile(master);
+
+          if (!isMasterBookingActive(master)) {
+            showInactiveBooking(master);
+            return;
+          }
 
           const services = await window.HairSupabase.getServices(master.id);
           bookingState.services = services;
@@ -968,7 +1036,12 @@
         document.getElementById('masterAddress').innerText = `${master.city || 'Алматы'}, ${master.address || ''}`;
         document.title = `Запись к ${master.name} — ${master.salon_name || 'HairStudio'}`;
 
-        const cleanPhone = (master.phone || '+77011234567').replace(/\D/g, '');
+        let cleanPhone = (master.phone || '+77011234567').replace(/\D/g, '');
+        if (cleanPhone.length === 11 && cleanPhone.startsWith('8')) {
+          cleanPhone = '7' + cleanPhone.slice(1);
+        } else if (cleanPhone.length === 10 && !cleanPhone.startsWith('7')) {
+          cleanPhone = '7' + cleanPhone;
+        }
         const waLink = document.getElementById('linkMasterWhatsapp');
         if (waLink) {
           waLink.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent('Здравствуйте! Я по поводу онлайн-записи')}`;
@@ -1040,6 +1113,9 @@
       }
 
       function onServicesSelectionChanged() {
+        bookingState.selectedSlot = null;
+        const timeLabel = document.getElementById('barSelectedTimeLabel');
+        if (timeLabel) timeLabel.innerText = 'Выберите время';
         renderServices();
         updateDurationSummary();
         if (bookingState.selectedDate) {
@@ -1307,9 +1383,14 @@
         document.getElementById('successTimeVal').innerText = `${data.start_time} - ${data.end_time}`;
         document.getElementById('successServicesVal').innerText = data.service_names;
         document.getElementById('successMasterVal').innerText = bookingState.master.name;
-        document.getElementById('successAddressVal').innerText = `${bookingState.master.city}, ${bookingState.master.address}`;
+        document.getElementById('successAddressVal').innerText = [bookingState.master?.city, bookingState.master?.address].filter(Boolean).join(', ') || 'Адрес уточняйте у мастера';
 
-        const cleanMasterPhone = (bookingState.master.phone || '+77011234567').replace(/\D/g, '');
+        let cleanMasterPhone = (bookingState.master.phone || '+77011234567').replace(/\D/g, '');
+        if (cleanMasterPhone.length === 11 && cleanMasterPhone.startsWith('8')) {
+          cleanMasterPhone = '7' + cleanMasterPhone.slice(1);
+        } else if (cleanMasterPhone.length === 10 && !cleanMasterPhone.startsWith('7')) {
+          cleanMasterPhone = '7' + cleanMasterPhone;
+        }
         const waMsg = `Здравствуйте, ${bookingState.master.name}! Я оставил(а) онлайн-заявку на запись:\n✂️ Услуга: ${data.service_names}\n📅 Дата: ${formatDisplayFullDate(data.date)}\n⏰ Время: ${data.start_time}\n👤 Имя: ${data.client_name}`;
         
         const waDirectBtn = document.getElementById('btnOpenMasterWhatsappDirect');
