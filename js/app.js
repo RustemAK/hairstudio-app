@@ -18,6 +18,9 @@ const state = {
   expenses: [],
   clients: [],
   pendingBookings: [],
+  authSession: null,
+  currentUser: null,
+  currentMaster: null,
   editingAppointmentId: null,
   editingServiceId: null,
   editingExpenseId: null,
@@ -432,6 +435,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await window.db.init();
     restoreSavedPreferences();
     loadOnlineBookingSettings();
+    await initMasterAuth();
     await reloadData();
     setupEventListeners();
     setupDateStrip();
@@ -1048,6 +1052,378 @@ function setupEventListeners() {
   if (inputMasterSlug) {
     inputMasterSlug.addEventListener('input', updateBookingLinkDisplay);
   }
+
+  // Master Authentication Listeners
+  setupAuthEventListeners();
+}
+
+// ================= MASTER AUTHENTICATION CONTROLLER =================
+
+async function initMasterAuth() {
+  if (!window.HairSupabase) return;
+  try {
+    const authState = await window.HairSupabase.getSession();
+    if (authState && authState.authenticated) {
+      state.authSession = authState.session;
+      state.currentUser = authState.user;
+      state.currentMaster = authState.master;
+
+      if (authState.master) {
+        if (authState.master.slug) {
+          safeStorage.set('hairstudio_master_slug', authState.master.slug);
+        }
+        if (authState.master.salon_name) {
+          safeStorage.set('hairstudio_studio_name', authState.master.salon_name);
+          loadStudioName();
+        }
+        if (authState.master.address) {
+          safeStorage.set('hairstudio_master_address', authState.master.address);
+        }
+      }
+      updateAuthUI(true);
+    } else {
+      updateAuthUI(false);
+    }
+  } catch (err) {
+    console.warn('initMasterAuth error:', err);
+    updateAuthUI(false);
+  }
+}
+
+function updateAuthUI(isLoggedIn) {
+  const btnAuthProfile = document.getElementById('btnAuthProfile');
+  const settingsEmail = document.getElementById('settingsAccountEmail');
+  const btnSettingsAction = document.getElementById('btnSettingsAuthAction');
+  const authProfileCard = document.getElementById('authProfileCard');
+  const authUnauthenticatedBox = document.getElementById('authUnauthenticatedBox');
+  const authModalTitle = document.getElementById('authModalTitle');
+
+  const profileName = document.getElementById('authProfileName');
+  const profileSalon = document.getElementById('authProfileSalon');
+  const profileEmail = document.getElementById('authProfileEmail');
+  const profileLink = document.getElementById('authProfileBookingLink');
+  const profileAvatar = document.getElementById('authProfileAvatar');
+
+  if (isLoggedIn && (state.currentUser || state.currentMaster)) {
+    const master = state.currentMaster || {};
+    const user = state.currentUser || {};
+    const displayName = master.name || (user.email ? user.email.split('@')[0] : 'Мастер');
+    const displayEmail = user.email || master.email || 'Авторизован';
+    const displaySalon = master.salon_name || 'HairStudio';
+    const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
+    const bookingUrl = getMasterBookingUrl(slug);
+
+    if (btnAuthProfile) {
+      btnAuthProfile.title = `Мастер: ${displayName} (${displayEmail})`;
+      btnAuthProfile.innerHTML = '👑';
+    }
+
+    if (settingsEmail) {
+      settingsEmail.innerHTML = `🟢 ${escapeHtml(displayName)} <span style="font-weight: 400; color: var(--text-muted); font-size: 11px;">(${escapeHtml(displayEmail)})</span>`;
+    }
+
+    if (btnSettingsAction) {
+      btnSettingsAction.innerText = 'Выйти';
+      btnSettingsAction.className = 'btn-danger';
+      btnSettingsAction.style.padding = '6px 12px';
+      btnSettingsAction.style.fontSize = '12px';
+    }
+
+    if (authProfileCard) authProfileCard.style.display = 'flex';
+    if (authUnauthenticatedBox) authUnauthenticatedBox.style.display = 'none';
+    if (authModalTitle) authModalTitle.innerText = `👑 Кабинет: ${displayName}`;
+
+    if (profileName) profileName.innerText = displayName;
+    if (profileSalon) profileSalon.innerText = displaySalon;
+    if (profileEmail) profileEmail.innerText = displayEmail;
+    if (profileLink) profileLink.innerText = bookingUrl;
+    if (profileAvatar) {
+      const firstChar = displayName.trim().charAt(0).toUpperCase() || '✂️';
+      profileAvatar.innerText = firstChar;
+    }
+  } else {
+    if (btnAuthProfile) {
+      btnAuthProfile.title = 'Войти в аккаунт мастера';
+      btnAuthProfile.innerHTML = '👤';
+    }
+
+    if (settingsEmail) {
+      settingsEmail.innerText = 'Гостевой / Демо-режим';
+    }
+
+    if (btnSettingsAction) {
+      btnSettingsAction.innerText = 'Войти';
+      btnSettingsAction.className = 'btn-secondary';
+      btnSettingsAction.style.padding = '6px 12px';
+      btnSettingsAction.style.fontSize = '12px';
+    }
+
+    if (authProfileCard) authProfileCard.style.display = 'none';
+    if (authUnauthenticatedBox) authUnauthenticatedBox.style.display = 'block';
+    if (authModalTitle) authModalTitle.innerText = '👤 Кабинет мастера';
+  }
+
+  updateBookingLinkDisplay();
+}
+
+function setupAuthEventListeners() {
+  // Profile button in top header
+  const btnAuthProfile = document.getElementById('btnAuthProfile');
+  if (btnAuthProfile) {
+    btnAuthProfile.addEventListener('click', () => {
+      openModal('modalAuth');
+    });
+  }
+
+  // Account action button in settings modal
+  const btnSettingsAction = document.getElementById('btnSettingsAuthAction');
+  if (btnSettingsAction) {
+    btnSettingsAction.addEventListener('click', () => {
+      if (state.authSession) {
+        handleSignOut();
+      } else {
+        closeModal('modalSettings');
+        openModal('modalAuth');
+      }
+    });
+  }
+
+  // Tab switching: Login vs Register
+  const btnTabLogin = document.getElementById('btnAuthTabLogin');
+  const btnTabRegister = document.getElementById('btnAuthTabRegister');
+  const formLogin = document.getElementById('formAuthLogin');
+  const formRegister = document.getElementById('formAuthRegister');
+
+  if (btnTabLogin && btnTabRegister) {
+    btnTabLogin.addEventListener('click', () => {
+      btnTabLogin.classList.add('active');
+      btnTabRegister.classList.remove('active');
+      if (formLogin) formLogin.style.display = 'flex';
+      if (formRegister) formRegister.style.display = 'none';
+    });
+
+    btnTabRegister.addEventListener('click', () => {
+      btnTabRegister.classList.add('active');
+      btnTabLogin.classList.remove('active');
+      if (formRegister) formRegister.style.display = 'flex';
+      if (formLogin) formLogin.style.display = 'none';
+    });
+  }
+
+  // Continue as guest button
+  const btnGuest = document.getElementById('btnContinueAsGuest');
+  if (btnGuest) {
+    btnGuest.addEventListener('click', () => {
+      closeModal('modalAuth');
+      showToast('Демо-режим активен (локально)');
+    });
+  }
+
+  // Copy & Open booking links from profile card
+  const btnCopyProfileLink = document.getElementById('btnAuthCopyBookingLink');
+  if (btnCopyProfileLink) {
+    btnCopyProfileLink.addEventListener('click', () => {
+      const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
+      const url = getMasterBookingUrl(slug);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          showToast('Ваша ссылка онлайн-записи скопирована!');
+        }).catch(() => {
+          prompt('Скопируйте ссылку для клиентов:', url);
+        });
+      } else {
+        prompt('Скопируйте ссылку для клиентов:', url);
+      }
+    });
+  }
+
+  const btnOpenProfileLink = document.getElementById('btnAuthOpenBookingLink');
+  if (btnOpenProfileLink) {
+    btnOpenProfileLink.addEventListener('click', () => {
+      const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
+      window.open(getMasterBookingUrl(slug), '_blank');
+    });
+  }
+
+  // Logout button inside profile card
+  const btnLogout = document.getElementById('btnAuthLogout');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', handleSignOut);
+  }
+
+  // Submit Login
+  if (formLogin) {
+    formLogin.addEventListener('submit', handleSignIn);
+  }
+
+  // Submit Register
+  if (formRegister) {
+    formRegister.addEventListener('submit', handleSignUp);
+  }
+}
+
+async function handleSignIn(e) {
+  if (e) e.preventDefault();
+  const emailInput = document.getElementById('loginEmail');
+  const passInput = document.getElementById('loginPassword');
+  const btnSubmit = document.getElementById('btnSubmitLogin');
+
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passInput ? passInput.value.trim() : '';
+
+  if (!email || !password) {
+    showToast('Введите Email и пароль', 'error');
+    return;
+  }
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Вход...';
+  }
+
+  try {
+    const res = await window.HairSupabase.signInMaster(email, password);
+    if (!res.ok) {
+      showToast(res.error || 'Ошибка входа', 'error');
+      return;
+    }
+
+    state.authSession = res.session;
+    state.currentUser = res.user;
+    state.currentMaster = res.master;
+
+    if (res.master) {
+      if (res.master.slug) {
+        safeStorage.set('hairstudio_master_slug', res.master.slug);
+      }
+      if (res.master.salon_name) {
+        safeStorage.set('hairstudio_studio_name', res.master.salon_name);
+        loadStudioName();
+      }
+      if (res.master.address) {
+        safeStorage.set('hairstudio_master_address', res.master.address);
+      }
+    }
+
+    updateAuthUI(true);
+    closeModal('modalAuth');
+    showToast(`✅ Добро пожаловать, ${res.master?.name || email}!`, 'success');
+
+    // Trigger cloud bookings & slots sync
+    await checkOnlineBookings(false);
+    triggerAutoSyncSlots();
+  } catch (err) {
+    showToast(`Ошибка входа: ${err.message}`, 'error');
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = 'Войти в аккаунт';
+    }
+  }
+}
+
+async function handleSignUp(e) {
+  if (e) e.preventDefault();
+  const nameInput = document.getElementById('regName');
+  const salonInput = document.getElementById('regSalonName');
+  const phoneInput = document.getElementById('regPhone');
+  const cityInput = document.getElementById('regCity');
+  const slugInput = document.getElementById('regSlug');
+  const emailInput = document.getElementById('regEmail');
+  const passInput = document.getElementById('regPassword');
+  const btnSubmit = document.getElementById('btnSubmitRegister');
+
+  const name = nameInput ? nameInput.value.trim() : '';
+  const salon_name = salonInput ? salonInput.value.trim() : 'HairStudio';
+  const phone = phoneInput ? phoneInput.value.trim() : '';
+  const address = cityInput ? cityInput.value.trim() : '';
+  const slug = slugInput ? slugInput.value.trim().toLowerCase() : '';
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passInput ? passInput.value.trim() : '';
+
+  if (!name || !email || !password || !slug) {
+    showToast('Заполните обязательные поля (*)', 'error');
+    return;
+  }
+
+  if (password.length < 6) {
+    showToast('Пароль должен быть не менее 6 символов', 'error');
+    return;
+  }
+
+  if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
+    showToast('Адрес ссылки должен содержать только буквы, цифры и дефис', 'error');
+    return;
+  }
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Создание кабинета...';
+  }
+
+  try {
+    const res = await window.HairSupabase.signUpMaster({
+      email,
+      password,
+      name,
+      salon_name,
+      phone,
+      address,
+      slug
+    });
+
+    if (!res.ok) {
+      showToast(res.error || 'Ошибка регистрации', 'error');
+      return;
+    }
+
+    if (res.needsConfirm) {
+      closeModal('modalAuth');
+      showToast(`🎉 Аккаунт создан! Проверьте ${email} для входа.`, 'success');
+      return;
+    }
+
+    state.authSession = res.session;
+    state.currentUser = res.user;
+    state.currentMaster = res.master;
+
+    safeStorage.set('hairstudio_master_slug', slug);
+    safeStorage.set('hairstudio_studio_name', salon_name);
+    if (address) safeStorage.set('hairstudio_master_address', address);
+    loadStudioName();
+
+    updateAuthUI(true);
+    closeModal('modalAuth');
+    showToast(`🎉 Кабинет мастера "${name}" создан!`, 'success');
+
+    // Sync initial busy slots
+    triggerAutoSyncSlots();
+  } catch (err) {
+    showToast(`Ошибка регистрации: ${err.message}`, 'error');
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = 'Зарегистрироваться и создать кабинет';
+    }
+  }
+}
+
+async function handleSignOut() {
+  const confirmed = confirm('Выйти из аккаунта мастера?\n(Данные сохранятся в облаке)');
+  if (!confirmed) return;
+
+  if (window.HairSupabase) {
+    await window.HairSupabase.signOutMaster();
+  }
+
+  state.authSession = null;
+  state.currentUser = null;
+  state.currentMaster = null;
+
+  updateAuthUI(false);
+  closeModal('modalAuth');
+  closeModal('modalSettings');
+  showToast('Вы вышли из аккаунта');
 }
 
 // ================= ONLINE BOOKINGS (SUPABASE) CONTROLLER =================
@@ -1161,7 +1537,8 @@ async function handleSyncCloudSlots() {
   showToast('Синхронизация слотов...', 'info');
 
   try {
-    const res = await window.HairSupabase.syncMasterBusySlots(null, state.appointments);
+    const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
+    const res = await window.HairSupabase.syncMasterBusySlots(targetMasterId, state.appointments);
     if (res.success) {
       showToast(`✅ Синхронизировано ${res.count} слотов!`);
     } else {
@@ -1175,7 +1552,7 @@ async function handleSyncCloudSlots() {
 }
 
 function handleCopyBookingLink() {
-  const slug = safeStorage.get('hairstudio_master_slug', 'demo');
+  const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
   const fullUrl = getMasterBookingUrl(slug);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(fullUrl).then(() => {
@@ -1189,7 +1566,7 @@ function handleCopyBookingLink() {
 }
 
 function handleOpenBookingLink() {
-  const slug = safeStorage.get('hairstudio_master_slug', 'demo');
+  const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
   const fullUrl = getMasterBookingUrl(slug);
   window.open(fullUrl, '_blank');
 }
@@ -1197,7 +1574,8 @@ function handleOpenBookingLink() {
 async function triggerAutoSyncSlots() {
   if (!window.HairSupabase) return;
   try {
-    await window.HairSupabase.syncMasterBusySlots(null, state.appointments);
+    const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
+    await window.HairSupabase.syncMasterBusySlots(targetMasterId, state.appointments);
   } catch (e) {
     console.warn('Auto sync slots failed:', e);
   }
@@ -1206,7 +1584,8 @@ async function triggerAutoSyncSlots() {
 async function checkOnlineBookings(notify = false) {
   if (!window.HairSupabase) return;
   try {
-    const bookings = await window.HairSupabase.getPendingBookings();
+    const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
+    const bookings = await window.HairSupabase.getPendingBookings(targetMasterId);
     state.pendingBookings = Array.isArray(bookings) ? bookings : [];
 
     const badge = document.getElementById('bookingBadge');

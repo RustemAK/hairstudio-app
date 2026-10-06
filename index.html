@@ -45,6 +45,7 @@
         🔔
         <span id="bookingBadge" class="booking-badge" style="display: none;">0</span>
       </button>
+      <button id="btnAuthProfile" class="btn-icon" title="Аккаунт мастера" aria-label="Профиль">👤</button>
       <button id="btnThemeToggle" class="btn-icon" title="Переключить тему (светлая/тёмная)" aria-label="Тема">🌙</button>
       <button id="btnSettings" class="btn-icon" title="Настройки и бэкап" aria-label="Настройки">
         ⚙️
@@ -546,7 +547,121 @@
     </div>
   </div>
 
-  <!-- Modal 5: Online Bookings (Входящие онлайн-заявки) -->
+  <!-- Modal 5: Master Authentication (Вход и регистрация мастера) -->
+  <div id="modalAuth" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h3 class="modal-title" id="authModalTitle">👤 Кабинет мастера</h3>
+        <button class="modal-close" data-close="modalAuth">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Logged-in Master Profile View -->
+        <div id="authProfileCard" style="display: none; flex-direction: column; gap: 14px;">
+          <div style="background: var(--bg-card); border: 1px solid var(--border-accent); border-radius: var(--radius-md); padding: 14px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--accent-gold); color: #000; font-size: 20px; font-weight: 700; display: flex; align-items: center; justify-content: center;" id="authProfileAvatar">
+                ✂️
+              </div>
+              <div style="flex: 1; overflow: hidden;">
+                <div id="authProfileName" style="font-weight: 700; font-size: 16px; color: var(--text-main);">Мастер</div>
+                <div id="authProfileSalon" style="font-size: 13px; color: var(--accent-gold-light);">HairStudio</div>
+                <div id="authProfileEmail" style="font-size: 11px; color: var(--text-muted); word-break: break-all;">master@example.com</div>
+              </div>
+            </div>
+            <div style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 8px;">
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Ваша персональная ссылка для записи:</div>
+              <div id="authProfileBookingLink" style="font-size: 12px; font-weight: 600; color: var(--text-main); background: var(--bg-input); padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); word-break: break-all; margin-bottom: 8px;">
+                ...
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" id="btnAuthCopyBookingLink" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;">📋 Скопировать</button>
+                <button type="button" id="btnAuthOpenBookingLink" class="btn-secondary" style="flex: 1; padding: 8px; font-size: 12px;">🌐 Открыть</button>
+              </div>
+            </div>
+          </div>
+          <button type="button" id="btnAuthLogout" class="btn-danger" style="width: 100%; padding: 10px;">
+            🚪 Выйти из аккаунта
+          </button>
+        </div>
+
+        <!-- Unauthenticated View (Login / Register) -->
+        <div id="authUnauthenticatedBox">
+          <!-- Auth Tabs Toggle -->
+          <div class="client-mode-toggle" id="authModeToggle" style="margin-bottom: 16px;">
+            <button type="button" class="chip-btn active" id="btnAuthTabLogin">
+              🔑 Войти
+            </button>
+            <button type="button" class="chip-btn" id="btnAuthTabRegister">
+              ✨ Регистрация мастера
+            </button>
+          </div>
+
+          <!-- Form 1: Login -->
+          <form id="formAuthLogin" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label" for="loginEmail">Email мастера *</label>
+              <input type="email" id="loginEmail" class="form-input" placeholder="master@example.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="loginPassword">Пароль *</label>
+              <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+            </div>
+            <button type="submit" id="btnSubmitLogin" class="btn-primary" style="margin-top: 6px;">
+              Войти в аккаунт
+            </button>
+          </form>
+
+          <!-- Form 2: Register -->
+          <form id="formAuthRegister" style="display: none; flex-direction: column; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label" for="regName">Имя мастера *</label>
+              <input type="text" id="regName" class="form-input" placeholder="Например: Руслан" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regSalonName">Название салона / студии</label>
+              <input type="text" id="regSalonName" class="form-input" placeholder="HairStudio" value="HairStudio">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regPhone">Телефон WhatsApp *</label>
+              <input type="tel" id="regPhone" class="form-input" placeholder="+7 (701) 000-00-00" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regCity">Город и адрес</label>
+              <input type="text" id="regCity" class="form-input" placeholder="Алматы, пр. Абая 150">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regSlug">Адрес вашей ссылки онлайн-записи *</label>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 12px; color: var(--text-muted);">/book.html?m=</span>
+                <input type="text" id="regSlug" class="form-input" placeholder="ruslan" required style="flex: 1;" pattern="[a-zA-Z0-9_-]+">
+              </div>
+              <span style="font-size: 11px; color: var(--text-subtle);">Только латинские буквы и цифры (например: saule, barber_kz)</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regEmail">Email мастера *</label>
+              <input type="email" id="regEmail" class="form-input" placeholder="master@example.com" required autocomplete="email">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regPassword">Пароль (минимум 6 символов) *</label>
+              <input type="password" id="regPassword" class="form-input" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+            </div>
+            <button type="submit" id="btnSubmitRegister" class="btn-primary" style="margin-top: 6px;">
+              Зарегистрироваться и создать кабинет
+            </button>
+          </form>
+
+          <div style="text-align: center; margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+            <button type="button" id="btnContinueAsGuest" style="background: none; border: none; color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline;">
+              Продолжить в Демо-режиме (без входа)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 6: Online Bookings (Входящие онлайн-заявки) -->
   <div id="modalBookings" class="modal-backdrop">
     <div class="modal-sheet">
       <div class="modal-handle"></div>
@@ -575,6 +690,17 @@
         <button class="modal-close" data-close="modalSettings">✕</button>
       </div>
       <div class="modal-body">
+        <!-- Account Status Card -->
+        <div class="form-group" style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 11px; color: var(--text-muted);">Аккаунт мастера:</div>
+              <div id="settingsAccountEmail" style="font-weight: 700; color: var(--text-main); font-size: 13px;">Гостевой / Демо-режим</div>
+            </div>
+            <button type="button" id="btnSettingsAuthAction" class="btn-secondary" style="padding: 6px 12px; font-size: 12px;">Войти</button>
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Название студии / Имя мастера</label>
           <div style="display: flex; gap: 8px;">
@@ -731,8 +857,8 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=1"></script>
-  <script src="js/db.js?v=28"></script>
-  <script src="js/app.js?v=37"></script>
+  <script src="js/supabase-sync.js?v=2"></script>
+  <script src="js/db.js?v=29"></script>
+  <script src="js/app.js?v=38"></script>
 </body>
 </html>

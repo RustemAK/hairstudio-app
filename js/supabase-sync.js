@@ -1,7 +1,7 @@
 /**
- * HairStudio - Supabase Sync & Booking API Layer
- * Handles communication with Supabase PostgreSQL/PostgREST
- * Includes seamless mock fallback for offline local testing.
+ * HairStudio - Supabase Sync, Auth & Booking API Layer
+ * Handles communication with Supabase PostgreSQL/PostgREST and Supabase Auth (GoTrue)
+ * Supports full master multi-tenancy, authentication sessions and offline mock fallback.
  */
 
 (function (root, factory) {
@@ -19,7 +19,8 @@
     SLUG: 'hairstudio_master_slug',
     AUTO_SYNC: 'hairstudio_supabase_autosync',
     MOCK_BOOKINGS: 'hairstudio_mock_cloud_bookings',
-    MOCK_SLOTS: 'hairstudio_mock_cloud_slots'
+    MOCK_SLOTS: 'hairstudio_mock_cloud_slots',
+    AUTH_SESSION: 'hairstudio_supabase_auth_session'
   };
 
   // Safe storage helper
@@ -40,6 +41,12 @@
     }
   }
 
+  function removeItem(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {}
+  }
+
   const DEFAULT_SUPABASE_URL = 'https://joknmtpkaijexdaefsud.supabase.co';
   const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impva25tdHBrYWlqZXhkYWVmc3VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyNzc5MjMsImV4cCI6MjEwNjg1MzkyM30.1_fL5cC5av_dodTnUfbd0NjUwWX46UR3zDUopEdAK-0';
 
@@ -55,10 +62,32 @@
     return Boolean(config.url && config.key && config.url.startsWith('http'));
   }
 
-  function getHeaders() {
+  // ================= AUTH SESSION HELPER =================
+  function getStoredSession() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.AUTH_SESSION);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return (parsed && parsed.access_token) ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveStoredSession(session) {
+    if (session && session.access_token) {
+      setItem(STORAGE_KEYS.AUTH_SESSION, JSON.stringify(session));
+    } else {
+      removeItem(STORAGE_KEYS.AUTH_SESSION);
+    }
+  }
+
+  function getHeaders(useAuthToken = false) {
+    const session = getStoredSession();
+    const token = (useAuthToken && session && session.access_token) ? session.access_token : config.key;
     return {
       'apikey': config.key,
-      'Authorization': `Bearer ${config.key}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     };
@@ -119,7 +148,222 @@
     } catch (e) {}
   }
 
-  // ================= API METHODS =================
+  // ================= AUTH METHODS (SUPABASE GOTRUE) =================
+
+  /**
+   * Register a new Master Account
+   */
+  async function signUpMaster(data) {
+    const email = String(data.email || '').trim().toLowerCase();
+    const password = String(data.password || '').trim();
+    if (!email || !password || password.length < 6) {
+      return { ok: false, error: 'Укажите корректный Email и пароль (минимум 6 символов)' };
+    }
+
+    if (!isConfigured()) {
+      return { ok: false, error: 'База данных Supabase не настроена' };
+    }
+
+    try {
+      const signupEndpoint = `${config.url}/auth/v1/signup`;
+      const res = await fetch(signupEndpoint, {
+        method: 'POST',
+        headers: getHeaders(false),
+        body: JSON.stringify({
+          email,
+          password,
+          data: {
+            name: data.name || 'Мастер',
+            slug: data.slug || 'master'
+          }
+        })
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        return { ok: false, error: result.error_description || result.msg || result.message || 'Ошибка регистрации' };
+      }
+
+      const user = result.user || result;
+      const session = result.session || (result.access_token ? result : null);
+
+      if (session) {
+        saveStoredSession(session);
+      }
+
+      // Create master record in public.masters
+      const slugVal = String(data.slug || data.name || 'master').toLowerCase().replace(/[^a-z0-9_-]/g, '') || ('m_' + Date.now().toString(36));
+      const masterRecord = {
+        user_id: user.id,
+        slug: slugVal,
+        name: data.name || 'Мастер',
+        salon_name: data.salon_name || 'HairStudio',
+        phone: data.phone || '+7',
+        city: data.city || 'Алматы',
+        address: data.address || 'ул. Абая 150',
+        instagram: data.instagram || '',
+        work_start_hour: 9,
+        work_end_hour: 21,
+        slot_step_min: 30,
+        is_active: true
+      };
+
+      try {
+        const createMasterEndpoint = `${config.url}/rest/v1/masters`;
+        const mRes = await fetch(createMasterEndpoint, {
+          method: 'POST',
+          headers: getHeaders(true),
+          body: JSON.stringify(masterRecord)
+        });
+        if (mRes.ok) {
+          const createdList = await mRes.json();
+          const createdMaster = Array.isArray(createdList) ? createdList[0] : createdList;
+          // Seed standard services for this master
+          await seedDefaultServices(createdMaster.id);
+          saveSettings(config.url, config.key, createdMaster.slug, true);
+          return { ok: true, user, master: createdMaster, session };
+        }
+      } catch (mErr) {
+        console.warn('Master profile auto-insert error:', mErr);
+      }
+
+      return { ok: true, user, session, needsConfirm: !session };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Сетевая ошибка' };
+    }
+  }
+
+  /**
+   * Seed standard services for new master
+   */
+  async function seedDefaultServices(masterId) {
+    if (!masterId) return;
+    try {
+      const services = [
+        { master_id: masterId, name: 'Мужская стрижка классическая', category: 'Стрижки', duration_min: 45, sort_order: 1 },
+        { master_id: masterId, name: 'Моделирование бороды и усов', category: 'Стрижки', duration_min: 30, sort_order: 2 },
+        { master_id: masterId, name: 'Комплекс: Стрижка + Борода', category: 'Стрижки', duration_min: 75, sort_order: 3 },
+        { master_id: masterId, name: 'Камуфляж седины волос / бороды', category: 'Окрашивание', duration_min: 30, sort_order: 4 },
+        { master_id: masterId, name: 'SPA-уход за кожей головы и волосами', category: 'Уход', duration_min: 40, sort_order: 5 }
+      ];
+      await fetch(`${config.url}/rest/v1/master_services`, {
+        method: 'POST',
+        headers: getHeaders(true),
+        body: JSON.stringify(services)
+      });
+    } catch (e) {}
+  }
+
+  /**
+   * Log In Master with Email and Password
+   */
+  async function signInMaster(email, password) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanPassword = String(password || '').trim();
+    if (!cleanEmail || !cleanPassword) {
+      return { ok: false, error: 'Укажите Email и пароль' };
+    }
+
+    if (!isConfigured()) {
+      return { ok: false, error: 'База данных Supabase не настроена' };
+    }
+
+    try {
+      const tokenEndpoint = `${config.url}/auth/v1/token?grant_type=password`;
+      const res = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: getHeaders(false),
+        body: JSON.stringify({ email: cleanEmail, password: cleanPassword })
+      });
+
+      const session = await res.json();
+      if (!res.ok) {
+        return { ok: false, error: session.error_description || session.msg || session.message || 'Неверный логин или пароль' };
+      }
+
+      saveStoredSession(session);
+
+      // Fetch master profile
+      const user = session.user;
+      let master = null;
+      if (user && user.id) {
+        master = await getMasterByUserId(user.id);
+      }
+
+      if (master && master.slug) {
+        saveSettings(config.url, config.key, master.slug, true);
+      }
+
+      return { ok: true, user, session, master };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Ошибка авторизации' };
+    }
+  }
+
+  /**
+   * Sign Out Master
+   */
+  async function signOutMaster() {
+    const session = getStoredSession();
+    if (session && session.access_token && isConfigured()) {
+      try {
+        await fetch(`${config.url}/auth/v1/logout`, {
+          method: 'POST',
+          headers: getHeaders(true)
+        });
+      } catch (e) {}
+    }
+    saveStoredSession(null);
+    return { ok: true };
+  }
+
+  /**
+   * Check Current Session / User
+   */
+  async function getSession() {
+    const session = getStoredSession();
+    if (!session || !session.access_token) {
+      return { authenticated: false, session: null, user: null, master: null };
+    }
+
+    // Try verifying user from cloud
+    if (isConfigured()) {
+      try {
+        const userRes = await fetch(`${config.url}/auth/v1/user`, {
+          headers: getHeaders(true)
+        });
+        if (userRes.ok) {
+          const user = await userRes.json();
+          const master = await getMasterByUserId(user.id);
+          return { authenticated: true, session, user, master };
+        } else if (userRes.status === 401) {
+          // Token expired, clear
+          saveStoredSession(null);
+          return { authenticated: false, session: null, user: null, master: null };
+        }
+      } catch (e) {}
+    }
+
+    return { authenticated: true, session, user: session.user, master: null };
+  }
+
+  /**
+   * Fetch Master Profile linked to a Supabase User ID
+   */
+  async function getMasterByUserId(userId) {
+    if (!userId || !isConfigured()) return null;
+    try {
+      const endpoint = `${config.url}/rest/v1/masters?user_id=eq.${encodeURIComponent(userId)}&select=*`;
+      const res = await fetch(endpoint, { headers: getHeaders(true) });
+      if (!res.ok) return null;
+      const list = await res.json();
+      return Array.isArray(list) && list.length > 0 ? list[0] : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ================= SETTINGS & GENERAL METHODS =================
 
   /**
    * Save Supabase Connection Settings
@@ -236,7 +480,6 @@
     if (!dateStr) return [];
 
     if (!isConfigured()) {
-      // Check mock cloud slots or local IndexedDB appointments
       if (typeof window !== 'undefined' && window.db && typeof window.db.getAppointments === 'function') {
         try {
           const allApps = await window.db.getAppointments();
@@ -298,7 +541,6 @@
     };
 
     if (!isConfigured()) {
-      // Save to mock storage
       const mockList = getMockBookings();
       const mockItem = {
         id: 'mock-bk-' + Date.now(),
@@ -308,7 +550,6 @@
       mockList.unshift(mockItem);
       saveMockBookings(mockList);
 
-      // Trigger custom window event if in same tab/browser
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('hairstudio:new-booking', { detail: mockItem }));
       }
@@ -319,7 +560,7 @@
       const endpoint = `${config.url}/rest/v1/booking_requests`;
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: getHeaders(false),
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
@@ -346,7 +587,7 @@
     try {
       const targetId = masterId || mockStore.master.id;
       const endpoint = `${config.url}/rest/v1/booking_requests?master_id=eq.${encodeURIComponent(targetId)}&status=eq.pending&order=created_at.desc`;
-      const res = await fetch(endpoint, { headers: getHeaders() });
+      const res = await fetch(endpoint, { headers: getHeaders(true) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const list = await res.json();
       return Array.isArray(list) ? list : [];
@@ -374,7 +615,7 @@
       const endpoint = `${config.url}/rest/v1/booking_requests?id=eq.${encodeURIComponent(bookingId)}`;
       const res = await fetch(endpoint, {
         method: 'PATCH',
-        headers: getHeaders(),
+        headers: getHeaders(true),
         body: JSON.stringify({ status: newStatus })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -387,12 +628,10 @@
 
   /**
    * Sync Master Schedule (Busy Slots) to Cloud
-   * Only uploads anonymous time blocks (NO personal client details!)
    */
   async function syncMasterBusySlots(masterId, appointments) {
     if (!Array.isArray(appointments)) return { success: false };
 
-    // Format appointments as anonymous slots for today and future dates
     const today = new Date().toISOString().split('T')[0];
     const activeFutureApps = appointments.filter(a => a.date >= today && a.status !== 'cancelled');
 
@@ -410,16 +649,14 @@
 
     try {
       const targetId = masterId || mockStore.master.id;
-      // Delete existing future slots
       const deleteEndpoint = `${config.url}/rest/v1/master_busy_slots?master_id=eq.${encodeURIComponent(targetId)}&date=gte.${today}`;
-      await fetch(deleteEndpoint, { method: 'DELETE', headers: getHeaders() });
+      await fetch(deleteEndpoint, { method: 'DELETE', headers: getHeaders(true) });
 
-      // Insert fresh slots in batch
       if (slots.length > 0) {
         const insertEndpoint = `${config.url}/rest/v1/master_busy_slots`;
         const res = await fetch(insertEndpoint, {
           method: 'POST',
-          headers: getHeaders(),
+          headers: getHeaders(true),
           body: JSON.stringify(slots)
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -437,6 +674,11 @@
     isConfigured,
     saveSettings,
     testConnection,
+    signUpMaster,
+    signInMaster,
+    signOutMaster,
+    getSession,
+    getMasterByUserId,
     getMaster,
     getServices,
     getBusySlots,
