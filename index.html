@@ -638,7 +638,7 @@
 
             <!-- Settings & Backup shortcut -->
             <div style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 10px;">
-              <button type="button" id="btnOpenSettingsFromProfile" class="btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="closeModal('modalAuth'); openModal('modalSettings');">
+              <button type="button" id="btnOpenSettingsFromProfile" class="btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="openModal('modalSettings');">
                 ⚙️ Настройки и резервные копии
               </button>
             </div>
@@ -729,6 +729,8 @@
         </div>
       </div>
     </div>
+  </div>
+
   <!-- Modal: Subscription & Plans (Тарифы и продление) -->
   <div id="modalSubscription" class="modal-backdrop">
     <div class="modal-sheet">
@@ -989,6 +991,6 @@
   <!-- Scripts -->
   <script src="js/supabase-sync.js?v=6"></script>
   <script src="js/db.js?v=31"></script>
-  <script src="js/app.js?v=43"></script>
+  <script src="js/app.js?v=44"></script>
 </body>
 </html>

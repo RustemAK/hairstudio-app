@@ -199,22 +199,34 @@ function showToast(message, type = 'success') {
 }
 
 // ================= MODAL CONTROLS =================
+let programmaticBackCount = 0;
+
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
-    // Close other open modals so they don't overlap or block the view
-    document.querySelectorAll('.modal-backdrop.active').forEach(m => {
+    const activeModals = document.querySelectorAll('.modal-backdrop.active');
+    const wasAnotherModalActive = Array.from(activeModals).some(m => m.id !== modalId);
+
+    // Close other open modals without triggering history back
+    activeModals.forEach(m => {
       if (m.id !== modalId) closeModal(m.id, false);
     });
 
-    // If not already active, push a history entry for iOS edge-swipe back support
-    if (!modal.classList.contains('active')) {
+    if (wasAnotherModalActive && history.state && history.state.modalOpen) {
+      // Direct modal switch: replace history state to avoid back stack pollution and popstate races
+      try {
+        history.replaceState({ modalOpen: modalId }, '', window.location.href);
+      } catch (e) {
+        console.warn('history.replaceState failed:', e);
+      }
+    } else if (!history.state || history.state.modalOpen !== modalId) {
       try {
         history.pushState({ modalOpen: modalId }, '', window.location.href);
       } catch (e) {
         console.warn('history.pushState failed:', e);
       }
     }
+
     modal.style.display = 'flex';
     modal.style.opacity = '1';
     modal.style.pointerEvents = 'auto';
@@ -251,10 +263,15 @@ function closeModal(modalId, syncHistory = true) {
     modal.style.transition = '';
 
     // If modal was closed via UI, sync history so back button/swipe doesn't hit stale modal
-    if (syncHistory && history.state && history.state.modalOpen) {
+    if (syncHistory && history.state && history.state.modalOpen === modalId) {
       try {
+        programmaticBackCount++;
         history.back();
+        setTimeout(() => {
+          if (programmaticBackCount > 0) programmaticBackCount--;
+        }, 400);
       } catch (e) {
+        programmaticBackCount = Math.max(0, programmaticBackCount - 1);
         console.warn('history.back failed:', e);
       }
     }
@@ -280,10 +297,16 @@ document.addEventListener('click', (e) => {
 // ================= MODAL SWIPE-TO-CLOSE GESTURES =================
 function setupModalSwipeGestures() {
   // Support iOS Safari edge swipe back and browser/hardware back button
-  window.addEventListener('popstate', () => {
+  window.addEventListener('popstate', (e) => {
+    if (programmaticBackCount > 0) {
+      programmaticBackCount--;
+      return;
+    }
     const activeModal = document.querySelector('.modal-backdrop.active');
     if (activeModal) {
-      closeModal(activeModal.id, false);
+      if (!e.state || e.state.modalOpen !== activeModal.id) {
+        closeModal(activeModal.id, false);
+      }
     }
   });
 
@@ -915,18 +938,10 @@ function setupEventListeners() {
   // Settings button
   const btnSettings = document.getElementById('btnSettings');
   if (btnSettings) {
-    const handleSettingsOpen = (e) => {
-      if (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+    btnSettings.addEventListener('click', (e) => {
+      if (e) e.preventDefault();
       openModal('modalSettings');
-    };
-    btnSettings.addEventListener('click', handleSettingsOpen);
-    btnSettings.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      handleSettingsOpen(e);
-    }, { passive: false });
+    });
   }
 
   // Status filter handled via schedule-dropdown
