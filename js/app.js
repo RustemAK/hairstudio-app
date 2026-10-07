@@ -774,18 +774,35 @@ function restoreActiveTabAndScroll() {
 }
 
 async function reloadData() {
-  state.services = await window.db.getServices();
-  state.appointments = await window.db.getAppointments();
-  state.expenses = await window.db.getExpenses();
-  state.clients = await window.db.getClients();
+  const [services, appointments, expenses, clients] = await Promise.all([
+    window.db.getServices(),
+    window.db.getAppointments(),
+    window.db.getExpenses(),
+    window.db.getClients()
+  ]);
+
+  state.services = services || [];
+  state.appointments = appointments || [];
+  state.expenses = expenses || [];
+  state.clients = clients || [];
 
   renderTodayBanner();
   renderDateStripDots();
-  renderSchedule();
-  renderClients();
-  renderServices();
-  renderExpenses();
-  renderFinance();
+
+  // Render current tab immediately; inactive tabs will render when activated
+  if (state.activeTab === 'schedule') {
+    renderSchedule();
+  } else if (state.activeTab === 'clients') {
+    renderClients();
+  } else if (state.activeTab === 'services') {
+    renderServices();
+  } else if (state.activeTab === 'expenses') {
+    renderExpenses();
+  } else if (state.activeTab === 'finance') {
+    renderFinance();
+  } else {
+    renderSchedule();
+  }
 }
 
 function setupServiceWorker() {
@@ -1038,11 +1055,124 @@ function setupEventListeners() {
     });
   }
 
-  // Client search input
+  // Client search input (Debounced 150ms for buttery smooth typing)
   const clientSearchInput = document.getElementById('clientSearchInput');
   if (clientSearchInput) {
+    let clientSearchDebounce = null;
     clientSearchInput.addEventListener('input', (e) => {
-      renderClients(e.target.value.toLowerCase().trim());
+      clearTimeout(clientSearchDebounce);
+      clientSearchDebounce = setTimeout(() => {
+        renderClients(e.target.value.toLowerCase().trim());
+      }, 150);
+    });
+  }
+
+  // Delegated Container Event Listeners (Zero closure allocation, high-performance)
+  const dateStrip = document.getElementById('dateStrip');
+  if (dateStrip) {
+    dateStrip.addEventListener('click', (e) => {
+      const card = e.target.closest('.date-card');
+      if (card && card.dataset.date) {
+        state.selectedDate = card.dataset.date;
+        dateStrip.querySelectorAll('.date-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        updateDateNavLabel();
+        renderSchedule();
+      }
+    });
+  }
+
+  const appointmentsList = document.getElementById('appointmentsList');
+  if (appointmentsList) {
+    appointmentsList.addEventListener('click', (e) => {
+      const expandBtn = e.target.closest('.btn-timeline-expand');
+      if (expandBtn) {
+        const direction = expandBtn.dataset.direction;
+        const targetHour = Number(expandBtn.dataset.targetHour);
+        if (direction === 'earlier') {
+          state.workStartHour = targetHour;
+          safeStorage.set('hairstudio_work_start_hour', String(targetHour));
+          const startSel = document.getElementById('settingWorkStartHour');
+          if (startSel) startSel.value = String(targetHour);
+        } else if (direction === 'later') {
+          state.workEndHour = targetHour;
+          safeStorage.set('hairstudio_work_end_hour', String(targetHour));
+          const endSel = document.getElementById('settingWorkEndHour');
+          if (endSel) endSel.value = String(targetHour);
+        }
+        renderSchedule();
+        return;
+      }
+
+      const emptySlot = e.target.closest('.timeline-empty-slot');
+      if (emptySlot && emptySlot.dataset.time) {
+        openAppointmentModal(null, null, emptySlot.dataset.time);
+        return;
+      }
+
+      if (e.target.closest('.quick-actions') || e.target.closest('.compact-quick-actions') || e.target.closest('button') || e.target.closest('a')) {
+        return;
+      }
+
+      const card = e.target.closest('.appointment-card');
+      if (card && card.dataset.appId) {
+        const app = state.appointments.find(a => String(a.id) === String(card.dataset.appId));
+        if (app) openAppointmentModal(app);
+      }
+    });
+  }
+
+  const servicesList = document.getElementById('servicesList');
+  if (servicesList) {
+    servicesList.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.btn-edit-service');
+      if (editBtn && editBtn.dataset.id) {
+        const s = state.services.find(item => item.id === Number(editBtn.dataset.id));
+        if (s) openServiceModal(s);
+      }
+    });
+  }
+
+  const expensesList = document.getElementById('expensesList');
+  if (expensesList) {
+    expensesList.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.btn-edit-exp');
+      if (editBtn && editBtn.dataset.id) {
+        const exp = state.expenses.find(item => item.id === Number(editBtn.dataset.id));
+        if (exp) openExpenseModal(exp);
+      }
+    });
+  }
+
+  const clientsList = document.getElementById('clientsList');
+  if (clientsList) {
+    clientsList.addEventListener('click', (e) => {
+      const viewBtn = e.target.closest('.btn-view-client');
+      if (viewBtn && viewBtn.dataset.clientId) {
+        const client = state.clients.find(c => c.id === Number(viewBtn.dataset.clientId));
+        if (client) {
+          const clientApps = state.appointments.filter(a => 
+            (client.phone && a.clientPhone === client.phone) || 
+            (a.clientName && a.clientName.toLowerCase() === client.name.toLowerCase())
+          );
+          openClientDetailsModal(client, clientApps);
+        }
+      }
+    });
+  }
+
+  const appSelectedServicesContainer = document.getElementById('appSelectedServicesContainer');
+  if (appSelectedServicesContainer) {
+    appSelectedServicesContainer.addEventListener('click', (e) => {
+      const removeBtn = e.target.closest('.btn-remove-service');
+      if (removeBtn && removeBtn.dataset.id) {
+        const sId = Number(removeBtn.dataset.id);
+        if (sId) {
+          state.selectedServicesForAppointment.delete(sId);
+          renderSelectedServicesInModal();
+          recalcAppointmentForm();
+        }
+      }
     });
   }
 
@@ -1908,8 +2038,20 @@ function handleOpenBookingLink() {
 
 let isSyncingSlots = false;
 let pendingSlotsSync = false;
+let autoSyncSlotsTimer = null;
 
-async function triggerAutoSyncSlots() {
+function triggerAutoSyncSlots() {
+  if (autoSyncSlotsTimer) clearTimeout(autoSyncSlotsTimer);
+  return new Promise((resolve) => {
+    autoSyncSlotsTimer = setTimeout(async () => {
+      autoSyncSlotsTimer = null;
+      await executeAutoSyncSlots();
+      resolve();
+    }, 350);
+  });
+}
+
+async function executeAutoSyncSlots() {
   if (!window.HairSupabase) return;
   if (!navigator.onLine) {
     pendingSlotsSync = true;
@@ -2244,6 +2386,13 @@ function switchTab(tabId, shouldScroll = true) {
     s.classList.toggle('active', s.id === `tab-${tabId}`);
   });
 
+  // Render on-demand when switching tabs
+  if (tabId === 'schedule') renderSchedule();
+  else if (tabId === 'clients') renderClients();
+  else if (tabId === 'services') renderServices();
+  else if (tabId === 'expenses') renderExpenses();
+  else if (tabId === 'finance') renderFinance();
+
   if (shouldScroll) {
     const savedScroll = sessionStorage.getItem('hairstudio_scroll_' + tabId);
     if (savedScroll !== null) {
@@ -2283,19 +2432,24 @@ function updateDateNavLabel() {
 function setupDateStrip(baseDate = null) {
   const strip = document.getElementById('dateStrip');
   if (!strip) return;
-  strip.innerHTML = '';
 
   const activeDate = parseYMD(state.selectedDate);
   const center = baseDate instanceof Date ? baseDate : activeDate;
+  const fragment = document.createDocumentFragment();
+
+  // Pre-calculate active dates Set for dots immediately ($O(N)$ once)
+  const appDates = new Set(state.appointments.map(a => a.date));
 
   // Generate 25 days (-10 to +14 days from center)
   for (let i = -10; i <= 14; i++) {
     const d = new Date(center);
     d.setDate(center.getDate() + i);
     const dateStr = formatDateToYMD(d);
+    const hasApps = appDates.has(dateStr);
+    const isActive = dateStr === state.selectedDate;
 
     const card = document.createElement('div');
-    card.className = `date-card ${dateStr === state.selectedDate ? 'active' : ''}`;
+    card.className = `date-card${isActive ? ' active' : ''}${hasApps ? ' has-appointments' : ''}`;
     card.dataset.date = dateStr;
 
     card.innerHTML = `
@@ -2304,27 +2458,16 @@ function setupDateStrip(baseDate = null) {
       <span class="date-dot"></span>
     `;
 
-    card.addEventListener('click', () => {
-      document.querySelectorAll('.date-card').forEach(c => c.classList.remove('active'));
-      card.classList.add('active');
-      state.selectedDate = dateStr;
-      updateDateNavLabel();
-      renderSchedule();
-      const scrollLeft = card.offsetLeft - (strip.clientWidth / 2) + (card.offsetWidth / 2);
-      strip.scrollTo({
-        left: Math.max(0, scrollLeft),
-        behavior: 'smooth'
-      });
-    });
-
-    strip.appendChild(card);
+    fragment.appendChild(card);
   }
 
-  updateDateNavLabel();
-  renderDateStripDots();
+  strip.innerHTML = '';
+  strip.appendChild(fragment);
 
-  // Scroll horizontally inside dateStrip container ONLY (never scroll the window/page vertically)
-  setTimeout(() => {
+  updateDateNavLabel();
+
+  // Smoothly center the active date card using rAF
+  requestAnimationFrame(() => {
     const activeCard = strip.querySelector('.date-card.active');
     if (activeCard) {
       const scrollLeft = activeCard.offsetLeft - (strip.clientWidth / 2) + (activeCard.offsetWidth / 2);
@@ -2333,21 +2476,22 @@ function setupDateStrip(baseDate = null) {
         behavior: 'smooth'
       });
     }
-  }, 40);
+  });
 }
 
 function renderDateStripDots() {
-  const cards = document.querySelectorAll('.date-card');
-  cards.forEach(card => {
-    const dateStr = card.dataset.date;
-    const hasApps = state.appointments.some(a => a.date === dateStr);
-    card.classList.toggle('has-appointments', hasApps);
+  const strip = document.getElementById('dateStrip');
+  if (!strip) return;
+  const appDates = new Set(state.appointments.map(a => a.date));
+  strip.querySelectorAll('.date-card').forEach(card => {
+    card.classList.toggle('has-appointments', appDates.has(card.dataset.date));
   });
 }
 
 // ================= SCHEDULE / APPOINTMENTS =================
 function renderSchedule() {
   const container = document.getElementById('appointmentsList');
+  if (!container) return;
   container.innerHTML = '';
 
   let dayApps = state.appointments.filter(a => a.date === state.selectedDate);
@@ -2366,6 +2510,7 @@ function renderSchedule() {
     const isPast = isAppointmentPast(app);
     const card = document.createElement('div');
     card.className = 'appointment-card' + (isPast ? ' is-past' : '') + (app.status === 'cancelled' ? ' status-cancelled' : '') + (isCompact ? ' compact' : '');
+    card.dataset.appId = app.id;
 
     const phoneClean = cleanPhoneForWhatsapp(app.clientPhone);
     const waLink = phoneClean ? `https://wa.me/${phoneClean}` : null;
@@ -2452,31 +2597,16 @@ function renderSchedule() {
       `;
     }
 
-    // Common event listeners for both compact & comfortable modes
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.quick-actions') || e.target.closest('.compact-quick-actions') || e.target.closest('button') || e.target.closest('a')) {
-        return;
-      }
-      openAppointmentModal(app);
-    });
-
-
-
-    card.querySelectorAll('a').forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.stopPropagation();
-      });
-    });
-
     return card;
   }
 
-    // MODE 1: HOURLY TIMELINE / CALENDAR VIEW
+  // MODE 1: HOURLY TIMELINE / CALENDAR VIEW
   if (state.scheduleViewMode === 'timeline') {
     const timeline = document.createElement('div');
     timeline.className = 'timeline-container' + (state.cardDensity === 'compact' ? ' compact' : '');
 
-    // Determine working hours (from master settings, or wider if earlier/later apps exist)
+    // Single pass: Pre-index appointments by hour ($O(N)$)
+    const appsByHour = {};
     let minHour = typeof state.workStartHour === 'number' ? state.workStartHour : 8;
     let maxHour = typeof state.workEndHour === 'number' ? state.workEndHour : 22;
 
@@ -2486,12 +2616,14 @@ function renderSchedule() {
         if (!isNaN(h)) {
           if (h < minHour) minHour = Math.max(0, h);
           if (h > maxHour) maxHour = Math.min(23, h);
+          if (!appsByHour[h]) appsByHour[h] = [];
+          appsByHour[h].push(a);
         }
       }
       if (a.endTime) {
-        const h = parseInt(a.endTime.split(':')[0], 10);
-        if (!isNaN(h)) {
-          if (h > maxHour) maxHour = Math.min(23, h);
+        const eh = parseInt(a.endTime.split(':')[0], 10);
+        if (!isNaN(eh) && eh > maxHour) {
+          maxHour = Math.min(23, eh);
         }
       }
     });
@@ -2502,35 +2634,24 @@ function renderSchedule() {
       maxHour = tmp;
     }
 
+    const fragment = document.createDocumentFragment();
+
     // Button to easily show earlier morning hours if not at 00:00
     if (minHour > 0) {
       const expandEarlierRow = document.createElement('div');
       expandEarlierRow.className = 'timeline-expand-row';
       const earlierTarget = Math.max(0, minHour - 2);
       expandEarlierRow.innerHTML = `
-        <button type="button" class="btn-timeline-expand" title="Показать более ранние утренние часы">
+        <button type="button" class="btn-timeline-expand" data-direction="earlier" data-target-hour="${earlierTarget}" title="Показать более ранние утренние часы">
           ⬆ Показать с ${String(earlierTarget).padStart(2, '0')}:00 (ранние часы)
         </button>
       `;
-      expandEarlierRow.querySelector('button').addEventListener('click', () => {
-        state.workStartHour = earlierTarget;
-        safeStorage.set('hairstudio_work_start_hour', String(earlierTarget));
-        const startSel = document.getElementById('settingWorkStartHour');
-        if (startSel) startSel.value = String(earlierTarget);
-        renderSchedule();
-      });
-      timeline.appendChild(expandEarlierRow);
+      fragment.appendChild(expandEarlierRow);
     }
 
     for (let hour = minHour; hour <= maxHour; hour++) {
       const hourStr = String(hour).padStart(2, '0') + ':00';
-
-      // Find appointments starting in this hour, sorted by startTime
-      const hourApps = dayApps.filter(a => {
-        if (!a.startTime) return false;
-        const [h] = a.startTime.split(':').map(Number);
-        return h === hour;
-      }).sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+      const hourApps = appsByHour[hour] || [];
 
       if (hourApps.length === 0) {
         // Empty hour slot
@@ -2546,6 +2667,7 @@ function renderSchedule() {
 
         const emptySlot = document.createElement('div');
         emptySlot.className = 'timeline-empty-slot';
+        emptySlot.dataset.time = hourStr;
         const emptySlotHint = state.cardDensity === 'compact'
           ? `<span>Свободно на ${hourStr}</span>`
           : `<span>Свободно на ${hourStr} <span style="font-size: 11px; opacity: 0.7;">(нажмите для записи)</span></span>`;
@@ -2553,14 +2675,11 @@ function renderSchedule() {
           <span class="empty-slot-plus">+</span>
           ${emptySlotHint}
         `;
-        emptySlot.addEventListener('click', () => {
-          openAppointmentModal(null, null, hourStr);
-        });
         contentCol.appendChild(emptySlot);
 
         row.appendChild(timeCol);
         row.appendChild(contentCol);
-        timeline.appendChild(row);
+        fragment.appendChild(row);
       } else {
         // Each appointment gets its own row, its own exact time, and its own centered dot
         hourApps.forEach(app => {
@@ -2578,7 +2697,7 @@ function renderSchedule() {
 
           row.appendChild(timeCol);
           row.appendChild(contentCol);
-          timeline.appendChild(row);
+          fragment.appendChild(row);
         });
       }
     }
@@ -2589,20 +2708,14 @@ function renderSchedule() {
       expandLaterRow.className = 'timeline-expand-row';
       const laterTarget = Math.min(23, maxHour + 2);
       expandLaterRow.innerHTML = `
-        <button type="button" class="btn-timeline-expand" title="Показать более поздние вечерние часы">
+        <button type="button" class="btn-timeline-expand" data-direction="later" data-target-hour="${laterTarget}" title="Показать более поздние вечерние часы">
           ⬇ Показать до ${String(laterTarget).padStart(2, '0')}:00 (поздние часы)
         </button>
       `;
-      expandLaterRow.querySelector('button').addEventListener('click', () => {
-        state.workEndHour = laterTarget;
-        safeStorage.set('hairstudio_work_end_hour', String(laterTarget));
-        const endSel = document.getElementById('settingWorkEndHour');
-        if (endSel) endSel.value = String(laterTarget);
-        renderSchedule();
-      });
-      timeline.appendChild(expandLaterRow);
+      fragment.appendChild(expandLaterRow);
     }
 
+    timeline.appendChild(fragment);
     container.appendChild(timeline);
     return;
   }
@@ -2621,9 +2734,11 @@ function renderSchedule() {
     return;
   }
 
+  const fragment = document.createDocumentFragment();
   dayApps.forEach(app => {
-    container.appendChild(createAppointmentCard(app));
+    fragment.appendChild(createAppointmentCard(app));
   });
+  container.appendChild(fragment);
 }
 
 function openAppointmentModal(app = null, preselectedClient = null, defaultStartTime = null, defaultDate = null) {
@@ -2922,6 +3037,7 @@ async function handleAppointmentDelete() {
 // ================= SERVICES =================
 function renderServices() {
   const container = document.getElementById('servicesList');
+  if (!container) return;
   container.innerHTML = '';
 
   let list = state.services;
@@ -2939,6 +3055,7 @@ function renderServices() {
     return;
   }
 
+  const fragment = document.createDocumentFragment();
   list.forEach(s => {
     const card = document.createElement('div');
     card.className = 'data-item-card';
@@ -2952,16 +3069,12 @@ function renderServices() {
       </div>
       <div class="item-right">
         <div class="item-price">${(Number(s.price) || 0).toLocaleString('ru-RU')} ₸</div>
-        <button class="btn-action-small btn-edit-service" title="Редактировать">✏️</button>
+        <button class="btn-action-small btn-edit-service" data-id="${s.id}" title="Редактировать">✏️</button>
       </div>
     `;
-
-    card.querySelector('.btn-edit-service').addEventListener('click', () => {
-      openServiceModal(s);
-    });
-
-    container.appendChild(card);
+    fragment.appendChild(card);
   });
+  container.appendChild(fragment);
 }
 
 function openServiceModal(s = null) {
@@ -3032,6 +3145,7 @@ async function handleServiceDelete() {
 // ================= EXPENSES & MATERIALS =================
 function renderExpenses() {
   const container = document.getElementById('expensesList');
+  if (!container) return;
   container.innerHTML = '';
 
   // Calculate this month's expenses
@@ -3039,7 +3153,10 @@ function renderExpenses() {
   const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const monthExpenses = state.expenses.filter(e => (e.date || '').startsWith(currentMonthPrefix));
   const monthTotal = monthExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  document.getElementById('expensesMonthTotal').innerText = `${monthTotal.toLocaleString('ru-RU')} ₸`;
+  const monthTotalEl = document.getElementById('expensesMonthTotal');
+  if (monthTotalEl) {
+    monthTotalEl.innerText = `${monthTotal.toLocaleString('ru-RU')} ₸`;
+  }
 
   let list = state.expenses;
   if (state.expenseCategory !== 'all') {
@@ -3059,6 +3176,7 @@ function renderExpenses() {
     return;
   }
 
+  const fragment = document.createDocumentFragment();
   list.forEach(exp => {
     const card = document.createElement('div');
     card.className = 'data-item-card';
@@ -3074,16 +3192,12 @@ function renderExpenses() {
       </div>
       <div class="item-right">
         <div class="item-price expense">-${(Number(exp.amount) || 0).toLocaleString('ru-RU')} ₸</div>
-        <button class="btn-action-small btn-edit-exp" title="Редактировать">✏️</button>
+        <button class="btn-action-small btn-edit-exp" data-id="${exp.id}" title="Редактировать">✏️</button>
       </div>
     `;
-
-    card.querySelector('.btn-edit-exp').addEventListener('click', () => {
-      openExpenseModal(exp);
-    });
-
-    container.appendChild(card);
+    fragment.appendChild(card);
   });
+  container.appendChild(fragment);
 }
 
 function openExpenseModal(exp = null) {
@@ -3149,6 +3263,7 @@ async function handleExpenseDelete() {
 // ================= CLIENTS =================
 function renderClients(searchQuery = '') {
   const container = document.getElementById('clientsList');
+  if (!container) return;
   container.innerHTML = '';
 
   let list = state.clients;
@@ -3169,12 +3284,40 @@ function renderClients(searchQuery = '') {
     return;
   }
 
+  // Pre-index appointments by phone and name in a single pass O(N)
+  const appsByPhone = new Map();
+  const appsByName = new Map();
+  for (let i = 0; i < state.appointments.length; i++) {
+    const a = state.appointments[i];
+    if (a.clientPhone) {
+      let arr = appsByPhone.get(a.clientPhone);
+      if (!arr) { arr = []; appsByPhone.set(a.clientPhone, arr); }
+      arr.push(a);
+    }
+    if (a.clientName) {
+      const nameKey = a.clientName.trim().toLowerCase();
+      let arr = appsByName.get(nameKey);
+      if (!arr) { arr = []; appsByName.set(nameKey, arr); }
+      arr.push(a);
+    }
+  }
+
+  const fragment = document.createDocumentFragment();
+
   list.forEach(c => {
-    // Count client visits
-    const clientApps = state.appointments.filter(a => 
-      (c.phone && a.clientPhone === c.phone) || 
-      (a.clientName.toLowerCase() === c.name.toLowerCase())
-    );
+    // Instant O(1) lookup
+    const phoneApps = c.phone ? appsByPhone.get(c.phone) : null;
+    const nameApps = c.name ? appsByName.get(c.name.trim().toLowerCase()) : null;
+
+    let clientApps = [];
+    if (phoneApps && nameApps && phoneApps !== nameApps) {
+      const set = new Set(phoneApps.map(a => a.id));
+      clientApps = [...phoneApps];
+      nameApps.forEach(a => { if (!set.has(a.id)) clientApps.push(a); });
+    } else {
+      clientApps = phoneApps || nameApps || [];
+    }
+
     const totalSpent = clientApps
       .filter(isAppointmentCompleted)
       .reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
@@ -3199,17 +3342,15 @@ function renderClients(searchQuery = '') {
         <div class="quick-actions">
           ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp" title="WhatsApp">💬</a>` : ''}
           ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
-          <button class="btn-action-small btn-view-client" title="Карточка клиента">📋</button>
+          <button class="btn-action-small btn-view-client" data-client-id="${c.id}" title="Карточка клиента">📋</button>
         </div>
       </div>
     `;
 
-    card.querySelector('.btn-view-client').addEventListener('click', () => {
-      openClientDetailsModal(c, clientApps);
-    });
-
-    container.appendChild(card);
+    fragment.appendChild(card);
   });
+
+  container.appendChild(fragment);
 }
 
 function openClientDetailsModal(client, clientApps) {
@@ -3681,6 +3822,7 @@ function renderSelectedServicesInModal() {
     return;
   }
 
+  const fragment = document.createDocumentFragment();
   state.selectedServicesForAppointment.forEach(id => {
     const s = state.services.find(item => item.id === id);
     if (!s) return;
@@ -3689,8 +3831,8 @@ function renderSelectedServicesInModal() {
     chip.className = 'selected-service-chip';
     chip.innerHTML = `
       <div class="chip-service-info">
-        <span class="chip-service-name">${s.name}</span>
-        <span class="chip-service-meta">${s.category} • ${s.duration} мин</span>
+        <span class="chip-service-name">${escapeHtml(s.name)}</span>
+        <span class="chip-service-meta">${escapeHtml(s.category)} • ${s.duration} мин</span>
       </div>
       <div class="chip-service-right">
         <span class="chip-service-price">${Number(s.price).toLocaleString('ru-RU')} ₸</span>
@@ -3698,14 +3840,10 @@ function renderSelectedServicesInModal() {
       </div>
     `;
 
-    chip.querySelector('.btn-remove-service').addEventListener('click', () => {
-      state.selectedServicesForAppointment.delete(s.id);
-      renderSelectedServicesInModal();
-      recalcAppointmentForm();
-    });
-
-    container.appendChild(chip);
+    fragment.appendChild(chip);
   });
+
+  container.appendChild(fragment);
 }
 
 

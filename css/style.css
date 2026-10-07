@@ -656,6 +656,7 @@ body {
 }
 
 .appointment-card {
+  contain: content;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -1066,6 +1067,7 @@ body {
 }
 
 .data-item-card {
+  contain: content;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
