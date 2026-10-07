@@ -1571,6 +1571,7 @@ async function handleSignUp(e) {
   const salonInput = document.getElementById('regSalonName');
   const phoneInput = document.getElementById('regPhone');
   const cityInput = document.getElementById('regCity');
+  const addressInput = document.getElementById('regAddress');
   const slugInput = document.getElementById('regSlug');
   const emailInput = document.getElementById('regEmail');
   const passInput = document.getElementById('regPassword');
@@ -1579,7 +1580,8 @@ async function handleSignUp(e) {
   const name = nameInput ? nameInput.value.trim() : '';
   const salon_name = salonInput ? salonInput.value.trim() : 'HairStudio';
   const phone = phoneInput ? phoneInput.value.trim() : '';
-  const address = cityInput ? cityInput.value.trim() : '';
+  const city = cityInput ? cityInput.value.trim() : 'Алматы';
+  const address = addressInput ? addressInput.value.trim() : '';
   const slug = slugInput ? slugInput.value.trim().toLowerCase() : '';
   const email = emailInput ? emailInput.value.trim() : '';
   const password = passInput ? passInput.value.trim() : '';
@@ -1611,6 +1613,7 @@ async function handleSignUp(e) {
       name,
       salon_name,
       phone,
+      city,
       address,
       slug
     });
@@ -1699,13 +1702,17 @@ function loadOnlineBookingSettings() {
   try {
     const master = state.currentMaster || {};
     const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
-    const address = master.address || safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
+    const city = master.city || safeStorage.get('hairstudio_master_city', 'Алматы');
+    const address = master.address || safeStorage.get('hairstudio_master_address', 'пр. Абая 150');
     const gisUrl = master.gis_url || safeStorage.get('hairstudio_master_2gis', '');
     const instagram = master.instagram || safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
     const studioName = master.salon_name || state.studioName || safeStorage.get('hairstudio_studio_name', 'HairStudio');
 
     const inputSlug = document.getElementById('settingMasterSlug');
     if (inputSlug) inputSlug.value = slug;
+
+    const inputCity = document.getElementById('settingMasterCity');
+    if (inputCity) inputCity.value = city;
 
     const inputAddress = document.getElementById('settingMasterAddress');
     if (inputAddress) inputAddress.value = address;
@@ -1727,18 +1734,21 @@ function loadOnlineBookingSettings() {
 
 async function handleSaveOnlineBookingSettings() {
   const slugInput = document.getElementById('settingMasterSlug');
+  const cityInput = document.getElementById('settingMasterCity');
   const addrInput = document.getElementById('settingMasterAddress');
   const gisInput = document.getElementById('settingMaster2Gis');
   const igInput = document.getElementById('settingMasterInstagram');
   const studioInput = document.getElementById('settingStudioName');
 
   const slug = (slugInput ? slugInput.value.trim().toLowerCase() : '') || 'demo';
-  const address = (addrInput ? addrInput.value.trim() : '') || 'Алматы, пр. Абая 150';
+  const city = (cityInput ? cityInput.value.trim() : '') || 'Алматы';
+  const address = (addrInput ? addrInput.value.trim() : '') || '';
   const gisUrl = (gisInput ? gisInput.value.trim() : '') || '';
   const instagram = (igInput ? igInput.value.trim().replace('@', '') : '') || '';
   const studioName = (studioInput ? studioInput.value.trim() : '') || 'HairStudio';
 
   safeStorage.set('hairstudio_master_slug', slug);
+  safeStorage.set('hairstudio_master_city', city);
   safeStorage.set('hairstudio_master_address', address);
   safeStorage.set('hairstudio_master_2gis', gisUrl);
   safeStorage.set('hairstudio_master_instagram', instagram);
@@ -1753,12 +1763,14 @@ async function handleSaveOnlineBookingSettings() {
       await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
         slug: slug,
         salon_name: studioName,
+        city: city,
         address: address,
         gis_url: gisUrl,
         instagram: instagram
       });
       state.currentMaster.slug = slug;
       state.currentMaster.salon_name = studioName;
+      state.currentMaster.city = city;
       state.currentMaster.address = address;
       state.currentMaster.gis_url = gisUrl;
       state.currentMaster.instagram = instagram;

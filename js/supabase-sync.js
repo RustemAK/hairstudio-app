@@ -505,6 +505,7 @@
     // Helper to get local demo customizations
     const getLocalCustomizedMaster = () => {
       const customName = getItem('hairstudio_studio_name', mockStore.master.name);
+      const customCity = getItem('hairstudio_master_city', mockStore.master.city);
       const customAddr = getItem('hairstudio_master_address', mockStore.master.address);
       const customGis = getItem('hairstudio_master_2gis', mockStore.master.gis_url || '');
       const customIg = getItem('hairstudio_master_instagram', mockStore.master.instagram);
@@ -512,6 +513,7 @@
         ...mockStore.master,
         name: customName || mockStore.master.name,
         salon_name: customName || mockStore.master.salon_name,
+        city: (customCity !== null && customCity !== undefined) ? customCity : mockStore.master.city,
         address: (customAddr !== null && customAddr !== undefined) ? customAddr : mockStore.master.address,
         gis_url: (customGis !== null && customGis !== undefined) ? customGis : '',
         instagram: (customIg !== null && customIg !== undefined) ? customIg : mockStore.master.instagram,

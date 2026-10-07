@@ -696,9 +696,15 @@
               <label class="form-label" for="regPhone">Телефон WhatsApp *</label>
               <input type="tel" id="regPhone" class="form-input" placeholder="+7 (701) 000-00-00" required>
             </div>
-            <div class="form-group">
-              <label class="form-label" for="regCity">Город и адрес</label>
-              <input type="text" id="regCity" class="form-input" placeholder="Алматы, пр. Абая 150">
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px;">
+              <div class="form-group">
+                <label class="form-label" for="regCity">Город *</label>
+                <input type="text" id="regCity" class="form-input" placeholder="Алматы" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="regAddress">Адрес студии</label>
+                <input type="text" id="regAddress" class="form-input" placeholder="пр. Абая 150">
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label" for="regSlug">Адрес вашей ссылки онлайн-записи *</label>
@@ -911,9 +917,15 @@
             <input type="text" id="settingMasterSlug" class="form-input" placeholder="demo" style="font-size: 13px; padding: 8px 10px;">
           </div>
 
-          <div class="form-group" style="margin-bottom: 8px;">
-            <label style="font-size: 11px; color: var(--text-muted);">Адрес студии / Город (для клиентов и 2ГИС):</label>
-            <input type="text" id="settingMasterAddress" class="form-input" placeholder="Алматы, пр. Абая 150" style="font-size: 13px; padding: 8px 10px;">
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin-bottom: 8px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Город студии:</label>
+              <input type="text" id="settingMasterCity" class="form-input" placeholder="Алматы, Астана..." style="font-size: 13px; padding: 8px 10px;">
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Адрес / Улица / Дом:</label>
+              <input type="text" id="settingMasterAddress" class="form-input" placeholder="пр. Абая 150 (уг. ул. Розыбакиева)" style="font-size: 13px; padding: 8px 10px;">
+            </div>
           </div>
 
           <div class="form-group" style="margin-bottom: 8px;">
@@ -1002,6 +1014,6 @@
   <!-- Scripts -->
   <script src="js/supabase-sync.js?v=7"></script>
   <script src="js/db.js?v=31"></script>
-  <script src="js/app.js?v=45"></script>
+  <script src="js/app.js?v=46"></script>
 </body>
 </html>
