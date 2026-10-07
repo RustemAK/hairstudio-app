@@ -10,7 +10,8 @@ ALTER TABLE public.masters
   ADD COLUMN IF NOT EXISTS subscription_plan TEXT DEFAULT 'trial',
   ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ DEFAULT (timezone('utc'::text, now()) + interval '14 days'),
   ADD COLUMN IF NOT EXISTS subscription_ends_at TIMESTAMPTZ DEFAULT (timezone('utc'::text, now()) + interval '14 days'),
-  ADD COLUMN IF NOT EXISTS subscription_notes TEXT DEFAULT '';
+  ADD COLUMN IF NOT EXISTS subscription_notes TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS gis_url TEXT DEFAULT '';
 
 -- 2. Назначаем мастера Рустем администратором платформы
 UPDATE public.masters 

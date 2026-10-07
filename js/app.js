@@ -1700,6 +1700,7 @@ function loadOnlineBookingSettings() {
     const master = state.currentMaster || {};
     const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
     const address = master.address || safeStorage.get('hairstudio_master_address', 'Алматы, пр. Абая 150');
+    const gisUrl = master.gis_url || safeStorage.get('hairstudio_master_2gis', '');
     const instagram = master.instagram || safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
     const studioName = master.salon_name || state.studioName || safeStorage.get('hairstudio_studio_name', 'HairStudio');
 
@@ -1708,6 +1709,9 @@ function loadOnlineBookingSettings() {
 
     const inputAddress = document.getElementById('settingMasterAddress');
     if (inputAddress) inputAddress.value = address;
+
+    const inputGis = document.getElementById('settingMaster2Gis');
+    if (inputGis) inputGis.value = gisUrl;
 
     const inputIg = document.getElementById('settingMasterInstagram');
     if (inputIg) inputIg.value = instagram;
@@ -1724,16 +1728,19 @@ function loadOnlineBookingSettings() {
 async function handleSaveOnlineBookingSettings() {
   const slugInput = document.getElementById('settingMasterSlug');
   const addrInput = document.getElementById('settingMasterAddress');
+  const gisInput = document.getElementById('settingMaster2Gis');
   const igInput = document.getElementById('settingMasterInstagram');
   const studioInput = document.getElementById('settingStudioName');
 
   const slug = (slugInput ? slugInput.value.trim().toLowerCase() : '') || 'demo';
   const address = (addrInput ? addrInput.value.trim() : '') || 'Алматы, пр. Абая 150';
+  const gisUrl = (gisInput ? gisInput.value.trim() : '') || '';
   const instagram = (igInput ? igInput.value.trim().replace('@', '') : '') || '';
   const studioName = (studioInput ? studioInput.value.trim() : '') || 'HairStudio';
 
   safeStorage.set('hairstudio_master_slug', slug);
   safeStorage.set('hairstudio_master_address', address);
+  safeStorage.set('hairstudio_master_2gis', gisUrl);
   safeStorage.set('hairstudio_master_instagram', instagram);
   safeStorage.set('hairstudio_studio_name', studioName);
 
@@ -1747,11 +1754,13 @@ async function handleSaveOnlineBookingSettings() {
         slug: slug,
         salon_name: studioName,
         address: address,
+        gis_url: gisUrl,
         instagram: instagram
       });
       state.currentMaster.slug = slug;
       state.currentMaster.salon_name = studioName;
       state.currentMaster.address = address;
+      state.currentMaster.gis_url = gisUrl;
       state.currentMaster.instagram = instagram;
     } catch (e) {
       console.warn('Profile sync to Supabase failed:', e);

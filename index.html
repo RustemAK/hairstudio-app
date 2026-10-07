@@ -912,13 +912,24 @@
           </div>
 
           <div class="form-group" style="margin-bottom: 8px;">
-            <label style="font-size: 11px; color: var(--text-muted);">Адрес студии / Город:</label>
+            <label style="font-size: 11px; color: var(--text-muted);">Адрес студии / Город (для клиентов и 2ГИС):</label>
             <input type="text" id="settingMasterAddress" class="form-input" placeholder="Алматы, пр. Абая 150" style="font-size: 13px; padding: 8px 10px;">
           </div>
 
           <div class="form-group" style="margin-bottom: 8px;">
-            <label style="font-size: 11px; color: var(--text-muted);">Instagram аккаунт (@ник):</label>
+            <label style="font-size: 11px; color: var(--text-muted);">Прямая ссылка на 2ГИС (необязательно):</label>
+            <input type="url" id="settingMaster2Gis" class="form-input" placeholder="https://2gis.kz/almaty/firm/..." style="font-size: 13px; padding: 8px 10px;">
+            <span style="font-size: 11px; color: var(--text-subtle); display: block; margin-top: 3px;">
+              Клиенты смогут нажать «2ГИС» на странице записи и сразу открыть маршрут к вам. Если оставить пустым, 2ГИС откроется автоматически по вашему адресу выше.
+            </span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label style="font-size: 11px; color: var(--text-muted);">Instagram аккаунт (@ник) (необязательно):</label>
             <input type="text" id="settingMasterInstagram" class="form-input" placeholder="hairstudio_kz" style="font-size: 13px; padding: 8px 10px;">
+            <span style="font-size: 11px; color: var(--text-subtle); display: block; margin-top: 3px;">
+              Отображается кнопкой 📷 Instagram на странице онлайн-записи, чтобы клиенты могли посмотреть ваше портфолио работ. Если пусто — кнопка скрыта.
+            </span>
           </div>
 
           <button type="button" id="btnSaveOnlineSettings" class="btn-primary" style="width: 100%; margin-top: 8px; padding: 10px; font-size: 13px;">
@@ -989,8 +1000,8 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=6"></script>
+  <script src="js/supabase-sync.js?v=7"></script>
   <script src="js/db.js?v=31"></script>
-  <script src="js/app.js?v=44"></script>
+  <script src="js/app.js?v=45"></script>
 </body>
 </html>

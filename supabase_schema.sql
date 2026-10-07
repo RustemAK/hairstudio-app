@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.masters (
     phone TEXT NOT NULL,                                      -- телефон мастера: '+77011234567'
     city TEXT DEFAULT 'Алматы',
     address TEXT DEFAULT 'ул. Абая 150',
+    gis_url TEXT DEFAULT '',                                  -- ссылка на филиал в 2ГИС
     instagram TEXT DEFAULT '',
     work_start_hour INT NOT NULL DEFAULT 9,                   -- начало рабочего дня (09:00)
     work_end_hour INT NOT NULL DEFAULT 21,                    -- конец рабочего дня (21:00)
@@ -21,8 +22,9 @@ CREATE TABLE IF NOT EXISTS public.masters (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
--- Добавляем колонку user_id если таблица уже существовала
+-- Добавляем колонки если таблица уже существовала
 ALTER TABLE public.masters ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.masters ADD COLUMN IF NOT EXISTS gis_url TEXT DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_masters_slug ON public.masters(slug);
 CREATE INDEX IF NOT EXISTS idx_masters_user_id ON public.masters(user_id);

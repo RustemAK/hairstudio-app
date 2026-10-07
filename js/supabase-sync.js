@@ -131,6 +131,7 @@
       phone: '+7 701 123 45 67',
       city: 'Алматы',
       address: 'пр. Абая 150 (уг. ул. Розыбакиева)',
+      gis_url: '',
       instagram: 'hairstudio_kz',
       work_start_hour: 9,
       work_end_hour: 21,
@@ -500,14 +501,26 @@
    */
   async function getMaster(slug) {
     const targetSlug = (slug || config.slug || 'demo').trim().toLowerCase();
-    if (!isConfigured()) {
-      // Mock master
-      const customName = getItem('hairstudio_studio_name', 'HairStudio');
+
+    // Helper to get local demo customizations
+    const getLocalCustomizedMaster = () => {
+      const customName = getItem('hairstudio_studio_name', mockStore.master.name);
+      const customAddr = getItem('hairstudio_master_address', mockStore.master.address);
+      const customGis = getItem('hairstudio_master_2gis', mockStore.master.gis_url || '');
+      const customIg = getItem('hairstudio_master_instagram', mockStore.master.instagram);
       return {
         ...mockStore.master,
         name: customName || mockStore.master.name,
+        salon_name: customName || mockStore.master.salon_name,
+        address: (customAddr !== null && customAddr !== undefined) ? customAddr : mockStore.master.address,
+        gis_url: (customGis !== null && customGis !== undefined) ? customGis : '',
+        instagram: (customIg !== null && customIg !== undefined) ? customIg : mockStore.master.instagram,
         slug: targetSlug
       };
+    };
+
+    if (!isConfigured() || targetSlug === 'demo') {
+      return getLocalCustomizedMaster();
     }
 
     try {
@@ -518,11 +531,34 @@
       if (Array.isArray(data) && data.length > 0) {
         return data[0];
       }
-      // If not found in cloud, return fallback
-      return { ...mockStore.master, slug: targetSlug };
+      return getLocalCustomizedMaster();
     } catch (err) {
       console.warn('Supabase getMaster error, using fallback:', err);
-      return { ...mockStore.master, slug: targetSlug };
+      return getLocalCustomizedMaster();
+    }
+  }
+
+  /**
+   * Update Master Profile in Supabase / Local mock
+   */
+  async function updateMasterProfile(masterId, updates) {
+    if (!masterId) return { success: false, error: 'No masterId' };
+    if (!isConfigured()) {
+      Object.assign(mockStore.master, updates);
+      return { success: true, master: mockStore.master };
+    }
+    try {
+      const endpoint = `${config.url}/rest/v1/masters?id=eq.${encodeURIComponent(masterId)}`;
+      const res = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: getHeaders(true),
+        body: JSON.stringify(updates)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return { success: true };
+    } catch (err) {
+      console.warn('updateMasterProfile error:', err);
+      return { success: false, error: err.message };
     }
   }
 
@@ -984,6 +1020,7 @@
     getSession,
     getMasterByUserId,
     getMaster,
+    updateMasterProfile,
     getServices,
     getBusySlots,
     submitBooking,

@@ -185,6 +185,12 @@
       background: rgba(16, 185, 129, 0.08);
     }
 
+    .btn-contact.twogis {
+      color: #22c55e;
+      border-color: rgba(34, 197, 94, 0.3);
+      background: rgba(34, 197, 94, 0.08);
+    }
+
     .btn-contact.instagram {
       color: #f472b6;
       border-color: rgba(244, 114, 182, 0.3);
@@ -707,15 +713,18 @@
             <span id="masterName">Загрузка мастера...</span>
           </h1>
           <div class="master-salon" id="masterSalon">HairStudio</div>
-          <div class="master-location" id="masterLocation">
-            <span>📍</span> <span id="masterAddress">Алматы, пр. Абая 150</span>
-          </div>
+          <a href="#" id="linkMasterLocation" class="master-location" target="_blank" rel="noopener" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); cursor: pointer;" title="Открыть адрес в 2ГИС">
+            <span>📍</span> <span id="masterAddress">Алматы, пр. Абая 150</span> <span style="font-size: 11px; color: #22c55e; font-weight: 600; margin-left: 2px;">(2ГИС ↗)</span>
+          </a>
         </div>
       </div>
 
       <div class="master-contacts-row">
         <a href="#" id="linkMasterWhatsapp" class="btn-contact whatsapp" target="_blank" rel="noopener">
           <span>💬</span> Чат WhatsApp
+        </a>
+        <a href="#" id="linkMaster2Gis" class="btn-contact twogis" target="_blank" rel="noopener">
+          <span>📍</span> 2ГИС (Маршрут)
         </a>
         <a href="#" id="linkMasterInstagram" class="btn-contact instagram" target="_blank" rel="noopener" style="display: none;">
           <span>📷</span> Instagram
@@ -869,7 +878,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=4"></script>
+  <script src="js/supabase-sync.js?v=7"></script>
   <script>
     (function () {
       'use strict';
@@ -1032,10 +1041,27 @@
 
       function renderMasterProfile(master) {
         document.getElementById('masterName').innerText = master.name || 'Мастер';
-        document.getElementById('masterSalon').innerText = master.salon_name || 'Студия';
-        document.getElementById('masterAddress').innerText = `${master.city || 'Алматы'}, ${master.address || ''}`;
+        const city = (master.city || 'Алматы').trim();
+        let addr = (master.address || '').trim();
+        let addressText = addr;
+        if (city && !addr.toLowerCase().startsWith(city.toLowerCase())) {
+          addressText = `${city}, ${addr}`.trim().replace(/^,\s*/, '');
+        }
+        document.getElementById('masterAddress').innerText = addressText || city;
         document.title = `Запись к ${master.name} — ${master.salon_name || 'HairStudio'}`;
 
+        // 2GIS link (custom direct URL or automatic search query)
+        const gisTarget = (master.gis_url && master.gis_url.startsWith('http'))
+          ? master.gis_url
+          : `https://2gis.kz/search/${encodeURIComponent(addressText)}`;
+
+        const locLink = document.getElementById('linkMasterLocation');
+        if (locLink) locLink.href = gisTarget;
+
+        const gisLink = document.getElementById('linkMaster2Gis');
+        if (gisLink) gisLink.href = gisTarget;
+
+        // WhatsApp link
         let cleanPhone = (master.phone || '+77011234567').replace(/\D/g, '');
         if (cleanPhone.length === 11 && cleanPhone.startsWith('8')) {
           cleanPhone = '7' + cleanPhone.slice(1);
@@ -1047,10 +1073,16 @@
           waLink.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent('Здравствуйте! Я по поводу онлайн-записи')}`;
         }
 
+        // Instagram link
         const igLink = document.getElementById('linkMasterInstagram');
-        if (igLink && master.instagram) {
-          igLink.href = `https://instagram.com/${master.instagram.replace('@', '')}`;
-          igLink.style.display = 'inline-flex';
+        if (igLink) {
+          const rawIg = master.instagram || '';
+          if (rawIg.trim()) {
+            igLink.href = `https://instagram.com/${rawIg.replace('@', '').trim()}`;
+            igLink.style.display = 'inline-flex';
+          } else {
+            igLink.style.display = 'none';
+          }
         }
       }
 
