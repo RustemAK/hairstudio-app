@@ -755,8 +755,31 @@ async function reloadData() {
 
 function setupServiceWorker() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(err => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // Trigger update check on page load to detect new version immediately
+      reg.update().catch(() => {});
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('🔄 Новая версия приложения готова, перезагрузка...');
+              showToast('Приложение обновлено! Перезагрузка...', 'info');
+              setTimeout(() => window.location.reload(), 1200);
+            }
+          });
+        }
+      });
+    }).catch(err => {
       console.log('SW registration error:', err);
+    });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
     });
   }
 }
@@ -892,11 +915,18 @@ function setupEventListeners() {
   // Settings button
   const btnSettings = document.getElementById('btnSettings');
   if (btnSettings) {
-    btnSettings.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    const handleSettingsOpen = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       openModal('modalSettings');
-    });
+    };
+    btnSettings.addEventListener('click', handleSettingsOpen);
+    btnSettings.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      handleSettingsOpen(e);
+    }, { passive: false });
   }
 
   // Status filter handled via schedule-dropdown

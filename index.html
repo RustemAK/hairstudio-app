@@ -21,7 +21,50 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=38">
+  <link rel="stylesheet" href="css/style.css?v=39">
+
+  <!-- Immediate Modal Controller (Guarantees instant modal response on phones before heavy JS loads) -->
+  <script>
+    window.openModal = function(id) {
+      var m = document.getElementById(id);
+      if (m) {
+        document.querySelectorAll('.modal-backdrop.active').forEach(function(el) {
+          if (el.id !== id) {
+            el.classList.remove('active');
+            el.style.display = '';
+            el.style.opacity = '';
+          }
+        });
+        m.style.display = 'flex';
+        m.style.opacity = '1';
+        m.style.pointerEvents = 'auto';
+        m.classList.add('active');
+        var s = m.querySelector('.modal-sheet');
+        if (s) {
+          s.style.transform = 'translateY(0)';
+          s.style.transition = '';
+        }
+        if (id === 'modalSettings') {
+          if (typeof loadOnlineBookingSettings === 'function') try { loadOnlineBookingSettings(); } catch(e){}
+          if (typeof updateAutoBackupUI === 'function') try { updateAutoBackupUI(); } catch(e){}
+        }
+      }
+    };
+    window.closeModal = function(id) {
+      var m = document.getElementById(id);
+      if (m) {
+        m.classList.remove('active');
+        m.style.display = '';
+        m.style.opacity = '';
+        m.style.pointerEvents = '';
+        var s = m.querySelector('.modal-sheet');
+        if (s) {
+          s.style.transform = '';
+          s.style.transition = '';
+        }
+      }
+    };
+  </script>
 </head>
 <body>
 
@@ -41,13 +84,13 @@
       </div>
     </div>
     <div class="header-actions">
-      <button id="btnOnlineBookings" class="btn-icon header-booking-btn" title="Входящие онлайн-заявки" aria-label="Онлайн-заявки" style="position: relative;" onclick="if(window.openModal)window.openModal('modalBookings')">
+      <button id="btnOnlineBookings" class="btn-icon header-booking-btn" title="Входящие онлайн-заявки" aria-label="Онлайн-заявки" style="position: relative;" onclick="window.openModal('modalBookings')">
         🔔
         <span id="bookingBadge" class="booking-badge" style="display: none;">0</span>
       </button>
-      <button id="btnAuthProfile" class="btn-icon" title="Аккаунт мастера" aria-label="Профиль" onclick="if(window.openModal)window.openModal('modalAuth')">👤</button>
+      <button id="btnAuthProfile" class="btn-icon" title="Аккаунт мастера" aria-label="Профиль" onclick="window.openModal('modalAuth')">👤</button>
       <button id="btnThemeToggle" class="btn-icon" title="Переключить тему (светлая/тёмная)" aria-label="Тема">🌙</button>
-      <button id="btnSettings" class="btn-icon" title="Настройки и бэкап" aria-label="Настройки" onclick="if(window.openModal)window.openModal('modalSettings')">
+      <button id="btnSettings" class="btn-icon" title="Настройки и бэкап" aria-label="Настройки" onclick="window.openModal('modalSettings')">
         ⚙️
       </button>
     </div>
@@ -593,6 +636,13 @@
               </button>
             </div>
 
+            <!-- Settings & Backup shortcut -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 10px;">
+              <button type="button" id="btnOpenSettingsFromProfile" class="btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px;" onclick="closeModal('modalAuth'); openModal('modalSettings');">
+                ⚙️ Настройки и резервные копии
+              </button>
+            </div>
+
             <!-- Super-Admin link button (visible only if is_admin) -->
             <div id="authProfileAdminSection" style="display: none; border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 10px;">
               <a href="admin.html" class="btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px; font-size: 13px; text-decoration: none;">
@@ -937,8 +987,8 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=5"></script>
-  <script src="js/db.js?v=30"></script>
-  <script src="js/app.js?v=42"></script>
+  <script src="js/supabase-sync.js?v=6"></script>
+  <script src="js/db.js?v=31"></script>
+  <script src="js/app.js?v=43"></script>
 </body>
 </html>
