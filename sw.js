@@ -1,5 +1,5 @@
 // HairStudio PWA Service Worker
-const CACHE_NAME = 'hairstudio-cache-v27';
+const CACHE_NAME = 'hairstudio-cache-v28';
 // NOTE: HTML references files with ?v= query strings for browser cache busting.
 // The fetch handler uses network-first and auto-updates the SW cache on success.
 const ASSETS_TO_CACHE = [

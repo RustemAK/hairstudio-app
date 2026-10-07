@@ -575,12 +575,24 @@ function loadStudioName() {
   document.title = `${savedName} — Запись клиентов и Учет`;
 }
 
-function handleSaveStudioName() {
+async function handleSaveStudioName() {
   const inputElem = document.getElementById('settingStudioName');
   if (!inputElem) return;
   const newName = inputElem.value.trim() || 'HairStudio';
   safeStorage.set('hairstudio_studio_name', newName);
+  state.studioName = newName;
   loadStudioName();
+
+  if (state.currentMaster && window.HairSupabase) {
+    try {
+      await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
+        salon_name: newName
+      });
+      state.currentMaster.salon_name = newName;
+    } catch (e) {
+      console.warn('Sync studio name to Supabase failed:', e);
+    }
+  }
   showToast('Название сохранено!');
 }
 
@@ -1221,6 +1233,23 @@ async function initMasterAuth() {
         if (authState.master.address) {
           safeStorage.set('hairstudio_master_address', authState.master.address);
         }
+        if (authState.master.city) {
+          safeStorage.set('hairstudio_master_city', authState.master.city);
+        }
+        if (authState.master.instagram) {
+          safeStorage.set('hairstudio_master_instagram', authState.master.instagram);
+        }
+        if (authState.master.gis_url) {
+          safeStorage.set('hairstudio_master_2gis', authState.master.gis_url);
+        } else if (authState.master.subscription_notes) {
+          try {
+            const sn = JSON.parse(authState.master.subscription_notes);
+            if (sn.gis_url) {
+              authState.master.gis_url = sn.gis_url;
+              safeStorage.set('hairstudio_master_2gis', sn.gis_url);
+            }
+          } catch (e) {}
+        }
       }
       updateAuthUI(true);
     } else {
@@ -1704,7 +1733,13 @@ function loadOnlineBookingSettings() {
     const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
     const city = master.city || safeStorage.get('hairstudio_master_city', 'Алматы');
     const address = master.address || safeStorage.get('hairstudio_master_address', 'пр. Абая 150');
-    const gisUrl = master.gis_url || safeStorage.get('hairstudio_master_2gis', '');
+    let gisUrl = master.gis_url || safeStorage.get('hairstudio_master_2gis', '');
+    if (!gisUrl && master.subscription_notes) {
+      try {
+        const sn = JSON.parse(master.subscription_notes);
+        if (sn.gis_url) gisUrl = sn.gis_url;
+      } catch (e) {}
+    }
     const instagram = master.instagram || safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
     const studioName = master.salon_name || state.studioName || safeStorage.get('hairstudio_studio_name', 'HairStudio');
 
@@ -1744,7 +1779,7 @@ async function handleSaveOnlineBookingSettings() {
   const city = (cityInput ? cityInput.value.trim() : '') || 'Алматы';
   const address = (addrInput ? addrInput.value.trim() : '') || '';
   const gisUrl = (gisInput ? gisInput.value.trim() : '') || '';
-  const instagram = (igInput ? igInput.value.trim().replace('@', '') : '') || '';
+  const instagram = (igInput ? igInput.value.trim().replace(/^@/, '') : '') || '';
   const studioName = (studioInput ? studioInput.value.trim() : '') || 'HairStudio';
 
   safeStorage.set('hairstudio_master_slug', slug);
@@ -1757,10 +1792,13 @@ async function handleSaveOnlineBookingSettings() {
   state.studioName = studioName;
   loadStudioName();
 
+  let cloudSyncOk = false;
+  let cloudError = '';
+
   // Синхронизируем изменения с облаком Supabase, если мастер авторизован
   if (state.currentMaster && window.HairSupabase) {
     try {
-      await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
+      const res = await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
         slug: slug,
         salon_name: studioName,
         city: city,
@@ -1768,19 +1806,36 @@ async function handleSaveOnlineBookingSettings() {
         gis_url: gisUrl,
         instagram: instagram
       });
-      state.currentMaster.slug = slug;
-      state.currentMaster.salon_name = studioName;
-      state.currentMaster.city = city;
-      state.currentMaster.address = address;
-      state.currentMaster.gis_url = gisUrl;
-      state.currentMaster.instagram = instagram;
+      if (res && res.success) {
+        cloudSyncOk = true;
+        state.currentMaster.slug = slug;
+        state.currentMaster.salon_name = studioName;
+        state.currentMaster.city = city;
+        state.currentMaster.address = address;
+        state.currentMaster.gis_url = gisUrl;
+        state.currentMaster.instagram = instagram;
+      } else {
+        cloudError = res?.error || 'Ошибка записи в БД';
+        console.warn('updateMasterProfile failed:', res);
+      }
     } catch (e) {
+      cloudError = e.message;
       console.warn('Profile sync to Supabase failed:', e);
     }
   }
 
   updateBookingLinkDisplay();
-  showToast('Данные мастера сохранены!');
+
+  if (state.currentMaster) {
+    if (cloudSyncOk) {
+      showToast('✅ Данные мастера сохранены и обновлены онлайн!');
+    } else {
+      showToast(`⚠️ Сохранено локально (${cloudError || 'ошибка сети'})`, 'warning');
+    }
+  } else {
+    showToast('✅ Данные мастера сохранены! (В демо-режиме)');
+  }
+
   triggerAutoSyncSlots();
 }
 

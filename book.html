@@ -878,7 +878,7 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=7"></script>
+  <script src="js/supabase-sync.js?v=8"></script>
   <script>
     (function () {
       'use strict';
@@ -1041,6 +1041,9 @@
 
       function renderMasterProfile(master) {
         document.getElementById('masterName').innerText = master.name || 'Мастер';
+        const salonElem = document.getElementById('masterSalon');
+        if (salonElem) salonElem.innerText = master.salon_name || 'HairStudio';
+
         const city = (master.city || '').trim();
         let addr = (master.address || '').trim();
         let addressText = '';
@@ -1054,12 +1057,17 @@
           addressText = city || addr || 'Город уточняйте у мастера';
         }
         document.getElementById('masterAddress').innerText = addressText;
-        document.title = `Запись к ${master.name} — ${master.salon_name || 'HairStudio'}`;
+        document.title = `Запись к ${master.name || 'мастеру'} — ${master.salon_name || 'HairStudio'}`;
 
         // 2GIS link (custom direct URL or automatic search query)
-        const gisTarget = (master.gis_url && master.gis_url.startsWith('http'))
-          ? master.gis_url
-          : `https://2gis.kz/search/${encodeURIComponent(addressText)}`;
+        let customGis = (master.gis_url && master.gis_url.startsWith('http')) ? master.gis_url : '';
+        if (!customGis && master.subscription_notes) {
+          try {
+            const sn = JSON.parse(master.subscription_notes);
+            if (sn.gis_url && sn.gis_url.startsWith('http')) customGis = sn.gis_url;
+          } catch (e) {}
+        }
+        const gisTarget = customGis || `https://2gis.kz/search/${encodeURIComponent(addressText)}`;
 
         const locLink = document.getElementById('linkMasterLocation');
         if (locLink) locLink.href = gisTarget;

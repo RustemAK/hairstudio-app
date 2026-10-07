@@ -513,8 +513,8 @@
         ...mockStore.master,
         name: customName || mockStore.master.name,
         salon_name: customName || mockStore.master.salon_name,
-        city: (customCity !== null && customCity !== undefined) ? customCity : mockStore.master.city,
-        address: (customAddr !== null && customAddr !== undefined) ? customAddr : mockStore.master.address,
+        city: (customCity !== null && customCity !== undefined && customCity !== '') ? customCity : mockStore.master.city,
+        address: (customAddr !== null && customAddr !== undefined && customAddr !== '') ? customAddr : mockStore.master.address,
         gis_url: (customGis !== null && customGis !== undefined) ? customGis : '',
         instagram: (customIg !== null && customIg !== undefined) ? customIg : mockStore.master.instagram,
         slug: targetSlug
@@ -531,7 +531,15 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
-        return data[0];
+        const cloudMaster = data[0];
+        // Unpack 2GIS link from subscription_notes if available
+        if (!cloudMaster.gis_url && cloudMaster.subscription_notes) {
+          try {
+            const sn = JSON.parse(cloudMaster.subscription_notes);
+            if (sn.gis_url) cloudMaster.gis_url = sn.gis_url;
+          } catch (e) {}
+        }
+        return cloudMaster;
       }
       return getLocalCustomizedMaster();
     } catch (err) {
@@ -545,18 +553,69 @@
    */
   async function updateMasterProfile(masterId, updates) {
     if (!masterId) return { success: false, error: 'No masterId' };
-    if (!isConfigured()) {
+
+    // Always update in-memory mock store
+    if (mockStore && mockStore.master) {
       Object.assign(mockStore.master, updates);
+    }
+
+    // Always persist to local safe storage
+    if (updates.salon_name) setItem('hairstudio_studio_name', updates.salon_name);
+    if (updates.city !== undefined) setItem('hairstudio_master_city', updates.city);
+    if (updates.address !== undefined) setItem('hairstudio_master_address', updates.address);
+    if (updates.gis_url !== undefined) setItem('hairstudio_master_2gis', updates.gis_url);
+    if (updates.instagram !== undefined) setItem('hairstudio_master_instagram', updates.instagram);
+    if (updates.slug) setItem('hairstudio_master_slug', updates.slug);
+
+    if (!isConfigured()) {
       return { success: true, master: mockStore.master };
     }
+
     try {
       const endpoint = `${config.url}/rest/v1/masters?id=eq.${encodeURIComponent(masterId)}`;
-      const res = await fetch(endpoint, {
+
+      // PostgREST strict schema cache rejects columns that don't exist (like gis_url).
+      // We only send recognized columns from public.masters schema.
+      const safePayload = {};
+      if (updates.slug !== undefined) safePayload.slug = updates.slug;
+      if (updates.name !== undefined) safePayload.name = updates.name;
+      if (updates.salon_name !== undefined) safePayload.salon_name = updates.salon_name;
+      if (updates.phone !== undefined) safePayload.phone = updates.phone;
+      if (updates.city !== undefined) safePayload.city = updates.city;
+      if (updates.address !== undefined) safePayload.address = updates.address;
+      if (updates.instagram !== undefined) safePayload.instagram = updates.instagram;
+      if (updates.work_start_hour !== undefined) safePayload.work_start_hour = updates.work_start_hour;
+      if (updates.work_end_hour !== undefined) safePayload.work_end_hour = updates.work_end_hour;
+      if (updates.slot_step_min !== undefined) safePayload.slot_step_min = updates.slot_step_min;
+
+      // Pack 2GIS into subscription_notes so it syncs to cloud without schema failure
+      if (updates.gis_url !== undefined) {
+        safePayload.subscription_notes = JSON.stringify({ gis_url: updates.gis_url });
+      }
+
+      let res = await fetch(endpoint, {
         method: 'PATCH',
         headers: getHeaders(true),
-        body: JSON.stringify(updates)
+        body: JSON.stringify(safePayload)
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (!res.ok) {
+        // Fallback: If subscription_notes fails or server rejects notes, retry without notes
+        const errText = await res.text().catch(() => '');
+        console.warn('updateMasterProfile PATCH initial failed:', res.status, errText);
+        delete safePayload.subscription_notes;
+        res = await fetch(endpoint, {
+          method: 'PATCH',
+          headers: getHeaders(true),
+          body: JSON.stringify(safePayload)
+        });
+      }
+
+      if (!res.ok) {
+        const errFinal = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${errFinal}`);
+      }
+
       return { success: true };
     } catch (err) {
       console.warn('updateMasterProfile error:', err);
