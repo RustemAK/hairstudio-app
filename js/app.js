@@ -1,302 +1,156 @@
 /**
- * HairStudio App Logic
- * Fast, responsive, mobile-first PWA for hair salon / barber masters.
+ * HairStudio PWA - Main Application Controller (ES Module)
+ * File: js/app.js
+ * Entry point orchestrating state, auth, routing, modals, offline-first sync & background tasks.
  */
 
-// ================= STATE =================
-const state = {
-  cardDensity: 'compact',
-  activeTab: 'schedule',
-  selectedDate: formatDateToYMD(new Date()),
-  scheduleFilter: 'all',
-  serviceCategory: 'all',
-  expenseCategory: 'all',
-  financePeriod: 'month',
-  selectedServicesForAppointment: new Set(),
-  services: [],
-  appointments: [],
-  expenses: [],
-  clients: [],
-  pendingBookings: [],
-  authSession: null,
-  currentUser: null,
-  currentMaster: null,
-  editingAppointmentId: null,
-  editingServiceId: null,
-  editingExpenseId: null,
-  viewingClientId: null,
-  appointmentClientMode: 'existing',
-  scheduleViewMode: 'timeline',
-  workStartHour: 8,
-  workEndHour: 22
-};
+import { state, rebuildIndices } from './state.js';
+import {
+  safeStorage,
+  escapeHtml,
+  formatDateToYMD,
+  parseYMD,
+  formatDisplayDate,
+  formatFullDate,
+  addMinutesToTime,
+  timesOverlap,
+  cleanPhoneForWhatsapp,
+  cleanPhoneForTel,
+  showToast,
+  playChime,
+  isAppointmentPast,
+  isAppointmentCompleted,
+  RU_DAYS,
+  RU_MONTHS,
+  RU_MONTHS_FULL
+} from './utils.js';
+import {
+  setupDateStrip,
+  renderDateStripDots,
+  renderSchedule,
+  updateDateNavLabel,
+  openAppointmentModal,
+  handleAppointmentSubmit,
+  handleAppointmentDelete,
+  triggerAutoSyncSlots,
+  recalcAppointmentForm
+} from './calendar.js';
+import {
+  renderClients,
+  openClientDetailsModal,
+  handleSaveClientNotes,
+  handleDeleteClient
+} from './clients.js';
+import {
+  renderServices,
+  openServiceModal,
+  handleServiceSubmit,
+  handleServiceDelete,
+  triggerSyncMasterServices
+} from './services.js';
+import {
+  renderFinance,
+  renderExpenses,
+  openExpenseModal,
+  handleExpenseSubmit,
+  handleExpenseDelete
+} from './finance.js';
+import {
+  renderSubscriptionStatus,
+  openKaspiPayModal,
+  initSubscriptionListeners,
+  checkSubscriptionExpired,
+  calculateSubscription
+} from './subscription.js';
 
-// ================= DATE HELPERS =================
-const RU_MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-const RU_DAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-const RU_MONTHS_FULL = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-
-// Safe storage wrapper for incognito & quota safety
-const safeStorage = {
-  get(key, fallback = null) {
-    try {
-      const val = localStorage.getItem(key);
-      return val !== null ? val : fallback;
-    } catch (e) {
-      return fallback;
-    }
-  },
-  set(key, val) {
-    try {
-      localStorage.setItem(key, val);
-    } catch (e) {
-      console.warn('LocalStorage write failed:', e);
-    }
-  },
-  getSession(key, fallback = null) {
-    try {
-      const val = sessionStorage.getItem(key);
-      return val !== null ? val : fallback;
-    } catch (e) {
-      return fallback;
-    }
-  },
-  setSession(key, val) {
-    try {
-      sessionStorage.setItem(key, val);
-    } catch (e) {
-      console.warn('SessionStorage write failed:', e);
-    }
-  }
-};
-
-// HTML escape helper to prevent XSS
-function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function formatDateToYMD(date) {
-  if (!(date instanceof Date) || isNaN(date.getTime())) {
-    date = new Date();
-  }
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-// Timezone-safe YMD string parser
-function parseYMD(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return new Date();
-  const parts = dateStr.split('-').map(Number);
-  if (parts.length !== 3 || isNaN(parts[0])) return new Date();
-  return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
-}
-
-function isAppointmentPast(app) {
-  if (!app || !app.date) return false;
-  const now = new Date();
-  const todayStr = formatDateToYMD(now);
-
-  if (app.date < todayStr) return true;
-  if (app.date > todayStr) return false;
-
-  // Same day: compare check time (endTime or startTime) with current time
-  const curHours = String(now.getHours()).padStart(2, '0');
-  const curMins = String(now.getMinutes()).padStart(2, '0');
-  const curTime = `${curHours}:${curMins}`;
-
-  const checkTime = app.endTime || app.startTime;
-  if (!checkTime) return false;
-  return checkTime <= curTime;
-}
-
-function isAppointmentCompleted(app) {
-  if (!app) return false;
-  if (app.status === 'cancelled') return false;
-  return app.status === 'completed' || isAppointmentPast(app);
-}
-
-
-function formatDisplayDate(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return '';
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return dateStr;
-  const [y, m, d] = parts;
-  const date = new Date(Number(y), Number(m) - 1, Number(d));
-  if (isNaN(date.getTime())) return dateStr;
-  return `${date.getDate()} ${RU_MONTHS[date.getMonth()]}, ${RU_DAYS[date.getDay()]}`;
-}
-
-function formatFullDate(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return '';
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return dateStr;
-  const [y, m, d] = parts;
-  const date = new Date(Number(y), Number(m) - 1, Number(d));
-  if (isNaN(date.getTime())) return dateStr;
-  return `${date.getDate()} ${RU_MONTHS_FULL[date.getMonth()]} ${y}`;
-}
-
-function addMinutesToTime(timeStr, minutesToAdd) {
-  if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) {
-    timeStr = '10:00';
-  }
-  const [h, m] = timeStr.split(':').map(Number);
-  const total = (isNaN(h) ? 10 : h) * 60 + (isNaN(m) ? 0 : m) + (Number(minutesToAdd) || 60);
-  const newH = Math.floor(total / 60) % 24;
-  const newM = total % 60;
-  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
-}
-
-// Time overlap checker to detect conflicting appointments (QA-MED-3)
-function timesOverlap(start1, end1, start2, end2) {
-  if (!start1 || !end1 || !start2 || !end2) return false;
-  const toMin = (t) => {
-    const parts = String(t).split(':').map(Number);
-    return (parts[0] || 0) * 60 + (parts[1] || 0);
-  };
-  const s1 = toMin(start1);
-  const e1 = toMin(end1);
-  const s2 = toMin(start2);
-  const e2 = toMin(end2);
-  return Math.max(s1, s2) < Math.min(e1, e2);
-}
-
-// Phone normalization helpers for Kazakhstan (+7 7XX XXX-XX-XX)
-function cleanPhoneForWhatsapp(phone) {
-  if (!phone) return '';
-  let digits = String(phone).replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('8')) {
-    digits = '7' + digits.slice(1);
-  } else if (digits.length === 10 && !digits.startsWith('7')) {
-    digits = '7' + digits;
-  }
-  return digits;
-}
-
-function cleanPhoneForTel(phone) {
-  const digits = cleanPhoneForWhatsapp(phone);
-  return digits ? `+${digits}` : '';
-}
-
-// ================= TOAST NOTIFICATIONS =================
-function showToast(message, type = 'success') {
-  const container = document.getElementById('toastContainer');
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.innerText = message;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.remove();
-  }, 3000);
-}
-
-// ================= MODAL CONTROLS =================
+// ================= MODAL CONTROLLER & SWIPE GESTURES =================
 let programmaticBackCount = 0;
 
-function openModal(modalId) {
+export function openModal(modalId) {
   const modal = document.getElementById(modalId);
-  if (modal) {
-    const activeModals = document.querySelectorAll('.modal-backdrop.active');
-    const wasAnotherModalActive = Array.from(activeModals).some(m => m.id !== modalId);
+  if (!modal) return;
 
-    // Close other open modals without triggering history back
-    activeModals.forEach(m => {
-      if (m.id !== modalId) closeModal(m.id, false);
-    });
+  const activeModals = document.querySelectorAll('.modal-backdrop.active');
+  const wasAnotherModalActive = Array.from(activeModals).some(m => m.id !== modalId);
 
-    if (wasAnotherModalActive && history.state && history.state.modalOpen) {
-      // Direct modal switch: replace history state to avoid back stack pollution and popstate races
-      try {
-        history.replaceState({ modalOpen: modalId }, '', window.location.href);
-      } catch (e) {
-        console.warn('history.replaceState failed:', e);
-      }
-    } else if (!history.state || history.state.modalOpen !== modalId) {
-      try {
-        history.pushState({ modalOpen: modalId }, '', window.location.href);
-      } catch (e) {
-        console.warn('history.pushState failed:', e);
-      }
+  // Close other open modals without polluting history
+  activeModals.forEach(m => {
+    if (m.id !== modalId) closeModal(m.id, false);
+  });
+
+  if (wasAnotherModalActive && history.state && history.state.modalOpen) {
+    try {
+      history.replaceState({ modalOpen: modalId }, '', window.location.href);
+    } catch (e) {
+      console.warn('history.replaceState failed:', e);
     }
-
-    modal.style.display = 'flex';
-    modal.style.opacity = '1';
-    modal.style.pointerEvents = 'auto';
-    modal.classList.add('active');
-    const sheet = modal.querySelector('.modal-sheet');
-    if (sheet) {
-      sheet.style.transform = 'translateY(0)';
-      sheet.style.transition = '';
+  } else if (!history.state || history.state.modalOpen !== modalId) {
+    try {
+      history.pushState({ modalOpen: modalId }, '', window.location.href);
+    } catch (e) {
+      console.warn('history.pushState failed:', e);
     }
-    modal.style.backgroundColor = '';
-    modal.style.transition = '';
+  }
 
-    // If this is modalSettings, populate its fields immediately
-    if (modalId === 'modalSettings') {
-      try { loadOnlineBookingSettings(); } catch (e) { console.warn('loadOnlineBookingSettings error:', e); }
-      try { updateAutoBackupUI(); } catch (e) { console.warn('updateAutoBackupUI error:', e); }
+  modal.style.display = 'flex';
+  modal.style.opacity = '1';
+  modal.style.pointerEvents = 'auto';
+  modal.classList.add('active');
+  const sheet = modal.querySelector('.modal-sheet');
+  if (sheet) {
+    sheet.style.transform = 'translateY(0)';
+    sheet.style.transition = '';
+  }
+  modal.style.backgroundColor = '';
+  modal.style.transition = '';
+
+  if (modalId === 'modalSettings') {
+    loadOnlineBookingSettings();
+    updateAutoBackupUI();
+  } else if (modalId === 'modalAuth') {
+    if (state.currentMaster) {
+      renderSubscriptionStatus(state.currentMaster);
+    }
+  } else if (modalId === 'modalBookings') {
+    renderBookingsList();
+  }
+}
+
+export function closeModal(modalId, syncHistory = true) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+
+  modal.classList.remove('active');
+  modal.style.display = '';
+  modal.style.opacity = '';
+  modal.style.pointerEvents = '';
+  const sheet = modal.querySelector('.modal-sheet');
+  if (sheet) {
+    sheet.style.transform = '';
+    sheet.style.transition = '';
+  }
+  modal.style.backgroundColor = '';
+  modal.style.transition = '';
+
+  if (syncHistory && history.state && history.state.modalOpen === modalId) {
+    try {
+      programmaticBackCount++;
+      history.back();
+      setTimeout(() => {
+        if (programmaticBackCount > 0) programmaticBackCount--;
+      }, 400);
+    } catch (e) {
+      programmaticBackCount = Math.max(0, programmaticBackCount - 1);
+      console.warn('history.back failed:', e);
     }
   }
 }
 
-function closeModal(modalId, syncHistory = true) {
-  const modal = document.getElementById(modalId);
-  if (modal) {
-    modal.classList.remove('active');
-    modal.style.display = '';
-    modal.style.opacity = '';
-    modal.style.pointerEvents = '';
-    const sheet = modal.querySelector('.modal-sheet');
-    if (sheet) {
-      sheet.style.transform = '';
-      sheet.style.transition = '';
-    }
-    modal.style.backgroundColor = '';
-    modal.style.transition = '';
-
-    // If modal was closed via UI, sync history so back button/swipe doesn't hit stale modal
-    if (syncHistory && history.state && history.state.modalOpen === modalId) {
-      try {
-        programmaticBackCount++;
-        history.back();
-        setTimeout(() => {
-          if (programmaticBackCount > 0) programmaticBackCount--;
-        }, 400);
-      } catch (e) {
-        programmaticBackCount = Math.max(0, programmaticBackCount - 1);
-        console.warn('history.back failed:', e);
-      }
-    }
-  }
-}
-
-// Expose globally for inline event handlers and external access
+// Global exposure for inline HTML event attributes
 window.openModal = openModal;
 window.closeModal = closeModal;
 
-// Close on backdrop click or close buttons
-document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal-backdrop')) {
-    closeModal(e.target.id);
-  }
-  const closeBtn = e.target.closest('[data-close]');
-  if (closeBtn) {
-    const modalId = closeBtn.getAttribute('data-close');
-    closeModal(modalId);
-  }
-});
-
-// ================= MODAL SWIPE-TO-CLOSE GESTURES =================
 function setupModalSwipeGestures() {
-  // Support iOS Safari edge swipe back and browser/hardware back button
   window.addEventListener('popstate', (e) => {
     if (programmaticBackCount > 0) {
       programmaticBackCount--;
@@ -307,6 +161,17 @@ function setupModalSwipeGestures() {
       if (!e.state || e.state.modalOpen !== activeModal.id) {
         closeModal(activeModal.id, false);
       }
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal-backdrop')) {
+      closeModal(e.target.id);
+    }
+    const closeBtn = e.target.closest('[data-close]');
+    if (closeBtn) {
+      const modalId = closeBtn.getAttribute('data-close');
+      closeModal(modalId);
     }
   });
 
@@ -326,7 +191,6 @@ function setupModalSwipeGestures() {
       if (e.touches.length !== 1) return;
 
       const target = e.target;
-      // Do not hijack taps on close button or clickable action buttons
       if (target.closest('.modal-close') || target.closest('button')) {
         isHeaderTouch = false;
         return;
@@ -342,13 +206,8 @@ function setupModalSwipeGestures() {
       const header = sheet.querySelector('.modal-header');
       const modalBody = sheet.querySelector('.modal-body');
 
-      if ((handle && (target === handle || handle.contains(target))) ||
-          (header && (target === header || header.contains(target)))) {
-        isHeaderTouch = true;
-      } else {
-        isHeaderTouch = false;
-      }
-
+      isHeaderTouch = Boolean((handle && (target === handle || handle.contains(target))) ||
+                             (header && (target === header || header.contains(target))));
       initialScrollTop = modalBody ? modalBody.scrollTop : 0;
     };
 
@@ -364,20 +223,12 @@ function setupModalSwipeGestures() {
       const currentScrollTop = modalBody ? modalBody.scrollTop : 0;
 
       if (!isDragging) {
-        // Minimum movement required to classify gesture
         if (Math.abs(deltaY) < 7 && Math.abs(deltaX) < 7) return;
-
-        // If predominantly horizontal, ignore to not interfere with text selection or horizontal swipes
         if (Math.abs(deltaX) > Math.abs(deltaY)) return;
-
-        // If pulling UP, allow normal scrolling inside modal
         if (deltaY <= 0) return;
 
-        // Pulling DOWN:
-        // Either touch started on handle/header, OR started at top of body and is at top
         if (isHeaderTouch || (initialScrollTop <= 0 && currentScrollTop <= 0)) {
           isDragging = true;
-          // Hide mobile keyboard if open to prevent viewport jumping on iPhone
           if (document.activeElement && typeof document.activeElement.blur === 'function') {
             document.activeElement.blur();
           }
@@ -387,16 +238,10 @@ function setupModalSwipeGestures() {
       }
 
       if (isDragging) {
-        if (e.cancelable) {
-          e.preventDefault();
-        }
-
-        // Apply downward translation
+        if (e.cancelable) e.preventDefault();
         const translateY = Math.max(0, deltaY);
         sheet.style.transition = 'none';
         sheet.style.transform = `translateY(${translateY}px)`;
-
-        // Backdrop opacity tracks pull down distance
         const sheetHeight = sheet.offsetHeight || 500;
         const progress = Math.min(1, translateY / sheetHeight);
         modal.style.transition = 'none';
@@ -414,11 +259,9 @@ function setupModalSwipeGestures() {
       const velocityY = deltaY / Math.max(1, duration);
       const sheetHeight = sheet.offsetHeight || 500;
 
-      // Dismiss if dragged down > 20% of sheet height OR fast flick downwards (> 0.38 px/ms)
       const shouldDismiss = deltaY > sheetHeight * 0.2 || (deltaY > 60 && velocityY > 0.38);
 
       if (shouldDismiss) {
-        // Animate out smoothly
         sheet.style.transition = 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)';
         sheet.style.transform = 'translateY(100%)';
         modal.style.transition = 'background-color 0.22s ease-out';
@@ -432,7 +275,6 @@ function setupModalSwipeGestures() {
           modal.style.transition = '';
         }, 220);
       } else {
-        // Snap back to open position
         sheet.style.transition = 'transform 0.26s cubic-bezier(0.16, 1, 0.3, 1)';
         sheet.style.transform = 'translateY(0)';
         modal.style.transition = 'background-color 0.26s ease-out';
@@ -451,899 +293,28 @@ function setupModalSwipeGestures() {
     sheet.addEventListener('touchmove', onTouchMove, { passive: false });
     sheet.addEventListener('touchend', onTouchEnd);
     sheet.addEventListener('touchcancel', onTouchEnd);
-
-    // Mouse drag support for header/handle on desktop
-    const handle = sheet.querySelector('.modal-handle');
-    const header = sheet.querySelector('.modal-header');
-    [handle, header].forEach(el => {
-      if (!el) return;
-      el.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.modal-close') || e.target.closest('button')) return;
-        if (e.button !== 0) return;
-
-        startY = e.clientY;
-        startX = e.clientX;
-        startTime = performance.now();
-        isDragging = false;
-        isHeaderTouch = true;
-        initialScrollTop = 0;
-
-        const onMouseMove = (moveEvent) => {
-          const deltaY = moveEvent.clientY - startY;
-          if (!isDragging && deltaY > 6) {
-            isDragging = true;
-          }
-          if (isDragging) {
-            const translateY = Math.max(0, deltaY);
-            sheet.style.transition = 'none';
-            sheet.style.transform = `translateY(${translateY}px)`;
-            const sheetHeight = sheet.offsetHeight || 500;
-            const progress = Math.min(1, translateY / sheetHeight);
-            modal.style.transition = 'none';
-            modal.style.backgroundColor = `rgba(0, 0, 0, ${Math.max(0, 0.7 * (1 - progress * 0.75))})`;
-          }
-        };
-
-        const onMouseUp = (upEvent) => {
-          document.removeEventListener('mousemove', onMouseMove);
-          document.removeEventListener('mouseup', onMouseUp);
-          if (!isDragging) return;
-          onTouchEnd({ changedTouches: [{ clientY: upEvent.clientY }] });
-        };
-
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-      });
-    });
   });
 }
 
-// ================= INITIALIZATION =================
-function initApp() {
-  try {
-    // 1. Привязываем UI-обработчики и настройки немедленно — шестеренка, темы, вкладки реагируют мгновенно!
-    setupEventListeners();
-    restoreSavedPreferences();
-    loadOnlineBookingSettings();
-  } catch (uiErr) {
-    console.warn('UI setup error:', uiErr);
-  }
-
-  // 2. Асинхронная инициализация базы и данных
-  (async () => {
-    try {
-      await window.db.init();
-
-      // Неблокирующая загрузка авторизации мастера в фоне
-      initMasterAuth().then(() => {
-        loadOnlineBookingSettings();
-      }).catch(console.warn);
-
-      await reloadData();
-      setupDateStrip();
-      setupServiceWorker();
-      restoreActiveTabAndScroll();
-
-      // Фоновые задачи синхронизации
-      checkAndRunAutoBackup().catch(console.warn);
-      checkOnlineBookings(false).catch(console.warn);
-      triggerAutoSyncSlots().catch(console.warn);
-    } catch (err) {
-      console.error('Initialization error:', err);
-      showToast('Ошибка инициализации базы данных', 'error');
-    }
-  })();
-
-  // Периодическая проверка входящих заявок каждые 60с
-  setInterval(() => checkOnlineBookings(false), 60000);
-
-  // Обновление при возврате на вкладку
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) checkOnlineBookings(false);
-  });
-  window.addEventListener('hairstudio:new-booking', () => {
-    checkOnlineBookings(true);
-  });
-
-  // АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ: при появлении интернета сразу всё синхронизируем
-  window.addEventListener('online', () => {
-    console.log('📶 Интернет появился: запуск автоматической синхронизации...');
-    triggerAutoSyncSlots();
-    triggerSyncMasterServices();
-    checkOnlineBookings(false);
-  });
-}
-
-// Запуск инициализации: поддерживает и раннюю, и отложенную загрузку из кэша
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
-} else {
-  initApp();
-}
-
-// ================= THEME & CUSTOM BRANDING =================
-function loadStudioName() {
-  const savedName = safeStorage.get('hairstudio_studio_name', 'HairStudio');
-  const headerElem = document.getElementById('headerStudioName');
-  if (headerElem) {
-    headerElem.innerText = savedName;
-  }
-  const inputElem = document.getElementById('settingStudioName');
-  if (inputElem) {
-    inputElem.value = savedName;
-  }
-  document.title = `${savedName} — Запись клиентов и Учет`;
-}
-
-async function handleSaveStudioName() {
-  const inputElem = document.getElementById('settingStudioName');
-  if (!inputElem) return;
-  const newName = inputElem.value.trim() || 'HairStudio';
-  safeStorage.set('hairstudio_studio_name', newName);
-  state.studioName = newName;
-  loadStudioName();
-
-  if (state.currentMaster && window.HairSupabase) {
-    try {
-      await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
-        salon_name: newName
-      });
-      state.currentMaster.salon_name = newName;
-    } catch (e) {
-      console.warn('Sync studio name to Supabase failed:', e);
-    }
-  }
-  showToast('Название сохранено!');
-}
-
-function applyTheme(theme) {
-  const isLight = theme === 'light';
-  if (isLight) {
-    document.documentElement.setAttribute('data-theme', 'light');
-  } else {
-    document.documentElement.removeAttribute('data-theme');
-  }
-
-  // Update theme meta color
-  const metaTheme = document.querySelector('meta[name="theme-color"]');
-  if (metaTheme) {
-    metaTheme.setAttribute('content', isLight ? '#f6f8fb' : '#0a0e17');
-  }
-
-  // Update header toggle button icon
-  const btnToggle = document.getElementById('btnThemeToggle');
-  if (btnToggle) {
-    btnToggle.innerText = isLight ? '☀️' : '🌙';
-    btnToggle.title = isLight ? 'Светлая тема (нажмите для тёмной)' : 'Тёмная тема (нажмите для светлой)';
-  }
-
-  // Update modal buttons active state
-  const btnDark = document.getElementById('btnThemeDark');
-  const btnLight = document.getElementById('btnThemeLight');
-  if (btnDark && btnLight) {
-    btnDark.classList.toggle('active', !isLight);
-    btnLight.classList.toggle('active', isLight);
-  }
-
-  localStorage.setItem('hairstudio_theme', isLight ? 'light' : 'dark');
-}
-
-function toggleTheme() {
-  const currentTheme = localStorage.getItem('hairstudio_theme') || 'dark';
-  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-  applyTheme(newTheme);
-  showToast(newTheme === 'light' ? 'Включена светлая тема' : 'Включена тёмная тема');
-}
-
-function updateDensityToggleUI() {
-  const btn = document.getElementById('btnDensityToggle');
-  const icon = document.getElementById('densityToggleIcon');
-  const text = document.getElementById('densityToggleText');
-  if (!btn) return;
-  const isCompact = state.cardDensity === 'compact';
-  btn.classList.toggle('is-compact', isCompact);
-  if (icon) icon.innerText = isCompact ? '⚡' : '📱';
-  if (text) text.innerText = isCompact ? 'Компактно' : 'Подробно';
-}
-
-function restoreSavedPreferences() {
-  // Restore card density (compact vs comfortable)
-  state.cardDensity = localStorage.getItem('hairstudio_card_density') || 'compact';
-  updateDensityToggleUI();
-
-  // Restore theme
-  const savedTheme = localStorage.getItem('hairstudio_theme') || 'dark';
-  applyTheme(savedTheme);
-
-  // Restore custom studio / master name
-  loadStudioName();
-
-  // Restore view mode (timeline vs list)
-  const savedViewMode = localStorage.getItem('hairstudio_schedule_view');
-  if (savedViewMode) {
-    state.scheduleViewMode = savedViewMode;
-  }
-
-  // Restore schedule status filter
-  const savedStatusFilter = safeStorage.get('hairstudio_schedule_filter');
-  if (savedStatusFilter) {
-    state.scheduleFilter = savedStatusFilter;
-  }
-
-  // Restore finance period
-  const savedFinancePeriod = localStorage.getItem('hairstudio_finance_period');
-  if (savedFinancePeriod) {
-    state.financePeriod = savedFinancePeriod;
-  }
-
-  // Restore service category filter
-  const savedServiceCategory = localStorage.getItem('hairstudio_service_category');
-  if (savedServiceCategory) {
-    state.serviceCategory = savedServiceCategory;
-  }
-
-  // Restore expense category filter
-  const savedExpenseCategory = localStorage.getItem('hairstudio_expense_category');
-  if (savedExpenseCategory) {
-    state.expenseCategory = savedExpenseCategory;
-  }
-
-  // Restore working hours for schedule timeline
-  const savedWorkStart = localStorage.getItem('hairstudio_work_start_hour');
-  state.workStartHour = savedWorkStart !== null ? parseInt(savedWorkStart, 10) : 8;
-
-  const savedWorkEnd = localStorage.getItem('hairstudio_work_end_hour');
-  state.workEndHour = savedWorkEnd !== null ? parseInt(savedWorkEnd, 10) : 22;
-
-  populateWorkHourSelects();
-}
-
-function populateWorkHourSelects() {
-  const startSelect = document.getElementById('settingWorkStartHour');
-  const endSelect = document.getElementById('settingWorkEndHour');
-  if (!startSelect || !endSelect) return;
-
-  startSelect.innerHTML = '';
-  endSelect.innerHTML = '';
-
-  for (let h = 0; h <= 23; h++) {
-    const hStr = String(h).padStart(2, '0') + ':00';
-
-    const optStart = document.createElement('option');
-    optStart.value = String(h);
-    optStart.textContent = hStr;
-    if (h === state.workStartHour) optStart.selected = true;
-    startSelect.appendChild(optStart);
-
-    const optEnd = document.createElement('option');
-    optEnd.value = String(h);
-    optEnd.textContent = hStr;
-    if (h === state.workEndHour) optEnd.selected = true;
-    endSelect.appendChild(optEnd);
-  }
-}
-
-function restoreActiveTabAndScroll() {
-  if (history.state && history.state.modalOpen) {
-    history.replaceState(null, '', window.location.href);
-  }
-  const hashTab = window.location.hash.replace('#', '');
-  const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
-  const savedTab = (hashTab && validTabs.includes(hashTab))
-    ? hashTab
-    : (localStorage.getItem('hairstudio_active_tab') || 'schedule');
-
-  switchTab(savedTab, false);
-
-  // Restore UI element states (dropdowns, chips)
-  const viewSelect = document.getElementById('scheduleViewSelect');
-  if (viewSelect && state.scheduleViewMode) {
-    viewSelect.value = state.scheduleViewMode;
-  }
-
-  const statusFilterSelect = document.getElementById('appointmentStatusFilter');
-  if (statusFilterSelect && state.scheduleFilter) {
-    statusFilterSelect.value = state.scheduleFilter;
-  }
-
-  if (state.financePeriod) {
-    document.querySelectorAll('#financePeriodSelector .period-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-period') === state.financePeriod);
-    });
-  }
-
-  if (state.serviceCategory) {
-    document.querySelectorAll('#serviceCategoryFilter .chip-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-category') === state.serviceCategory);
-    });
-  }
-
-  if (state.expenseCategory) {
-    document.querySelectorAll('#expenseCategoryFilter .chip-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-category') === state.expenseCategory);
-    });
-  }
-
-  // Restore scroll position
-  const savedScroll = sessionStorage.getItem('hairstudio_scroll_' + savedTab);
-  if (savedScroll !== null) {
-    setTimeout(() => {
-      window.scrollTo({ top: Number(savedScroll), behavior: 'instant' });
-    }, 60);
-  }
-}
-
-async function reloadData() {
-  const [services, appointments, expenses, clients] = await Promise.all([
-    window.db.getServices(),
-    window.db.getAppointments(),
-    window.db.getExpenses(),
-    window.db.getClients()
-  ]);
-
-  state.services = services || [];
-  state.appointments = appointments || [];
-  state.expenses = expenses || [];
-  state.clients = clients || [];
-
-  renderTodayBanner();
-  renderDateStripDots();
-
-  // Render current tab immediately; inactive tabs will render when activated
-  if (state.activeTab === 'schedule') {
-    renderSchedule();
-  } else if (state.activeTab === 'clients') {
-    renderClients();
-  } else if (state.activeTab === 'services') {
-    renderServices();
-  } else if (state.activeTab === 'expenses') {
-    renderExpenses();
-  } else if (state.activeTab === 'finance') {
-    renderFinance();
-  } else {
-    renderSchedule();
-  }
-}
-
-function setupServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').then(reg => {
-      // Trigger update check on page load to detect new version immediately
-      reg.update().catch(() => {});
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('🔄 Новая версия приложения готова, перезагрузка...');
-              showToast('Приложение обновлено! Перезагрузка...', 'info');
-              setTimeout(() => window.location.reload(), 1200);
-            }
-          });
-        }
-      });
-    }).catch(err => {
-      console.log('SW registration error:', err);
-    });
-
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!refreshing) {
-        refreshing = true;
-        window.location.reload();
-      }
-    });
-  }
-}
-
-// ================= NAVIGATION & TABS =================
-function setupEventListeners() {
-  setupModalSwipeGestures();
-
-  // Density switcher (Compact vs Comfortable)
-  const btnDensity = document.getElementById('btnDensityToggle');
-  if (btnDensity) {
-    btnDensity.addEventListener('click', () => {
-      state.cardDensity = state.cardDensity === 'compact' ? 'comfortable' : 'compact';
-      localStorage.setItem('hairstudio_card_density', state.cardDensity);
-      updateDensityToggleUI();
-      renderSchedule();
-      showToast(state.cardDensity === 'compact' ? '⚡ Компактный вид' : '📱 Подробный вид');
-    });
-  }
-
-  // Bottom nav tab switching
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.getAttribute('data-tab');
-      switchTab(tab);
-    });
-  });
-
-  // Browser back/forward navigation support
-  window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '');
-    const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
-    if (hash && hash !== state.activeTab && validTabs.includes(hash)) {
-      switchTab(hash, false);
-    }
-  });
-
-  // Save scroll position for the current tab (debounced)
-  let scrollDebounce;
-  window.addEventListener('scroll', () => {
-    clearTimeout(scrollDebounce);
-    scrollDebounce = setTimeout(() => {
-      if (state.activeTab) {
-        sessionStorage.setItem('hairstudio_scroll_' + state.activeTab, String(window.scrollY));
-      }
-    }, 100);
-  }, { passive: true });
-
-  // Schedule Toolbar listeners (Dropdowns)
-  const statusFilterSelect = document.getElementById('appointmentStatusFilter');
-  if (statusFilterSelect) {
-    statusFilterSelect.addEventListener('change', (e) => {
-      state.scheduleFilter = e.target.value;
-      localStorage.setItem('hairstudio_schedule_filter', state.scheduleFilter);
-      renderSchedule();
-    });
-  }
-
-  const viewSelect = document.getElementById('scheduleViewSelect');
-  if (viewSelect) {
-    viewSelect.addEventListener('change', (e) => {
-      state.scheduleViewMode = e.target.value;
-      localStorage.setItem('hairstudio_schedule_view', state.scheduleViewMode);
-      renderSchedule();
-    });
-  }
-
-  // Appointment service dropdown listener
-  const addServiceSelect = document.getElementById('appAddServiceSelect');
-  if (addServiceSelect) {
-    addServiceSelect.addEventListener('change', (e) => {
-      const serviceId = Number(e.target.value);
-      if (serviceId) {
-        state.selectedServicesForAppointment.add(serviceId);
-        renderSelectedServicesInModal();
-        recalcAppointmentForm();
-        e.target.value = '';
-      }
-    });
-  }
-
-  // Channel toggle listeners (Phone vs WhatsApp)
-  const btnChannelPhone = document.getElementById('btnChannelPhone');
-  const btnChannelWhatsapp = document.getElementById('btnChannelWhatsapp');
-  if (btnChannelPhone && btnChannelWhatsapp) {
-    btnChannelPhone.addEventListener('click', () => setChannelMode('phone'));
-    btnChannelWhatsapp.addEventListener('click', () => setChannelMode('whatsapp'));
-  }
-
-  // Paste phone button listener
-  const btnPastePhone = document.getElementById('btnPastePhone');
-  if (btnPastePhone) {
-    btnPastePhone.addEventListener('click', handlePastePhone);
-  }
-
-  // Appointment client mode listeners
-  const btnClientExisting = document.getElementById('btnClientModeExisting');
-  if (btnClientExisting) btnClientExisting.addEventListener('click', () => setClientMode('existing'));
-  const btnClientNew = document.getElementById('btnClientModeNew');
-  if (btnClientNew) btnClientNew.addEventListener('click', () => setClientMode('new'));
-  const appExistingSelect = document.getElementById('appExistingClientSelect');
-  if (appExistingSelect) appExistingSelect.addEventListener('change', updateClientSelectionFromDropdown);
-  const btnCopyFormula = document.getElementById('btnCopyClientFormula');
-  if (btnCopyFormula) btnCopyFormula.addEventListener('click', copyClientFormulaToNotes);
-
-  const btnBookClient = document.getElementById('btnBookThisClient');
-  if (btnBookClient) {
-    btnBookClient.addEventListener('click', () => {
-      const client = state.clients.find(c => c.id === state.viewingClientId);
-      closeModal('modalClientDetails');
-      if (client) {
-        openAppointmentModal(null, client);
-      }
-    });
-  }
-
-  // FAB button
-  const fab = document.getElementById('btnFab');
-  if (fab) {
-    fab.addEventListener('click', () => {
-      if (state.activeTab === 'schedule' || state.activeTab === 'clients') {
-        openAppointmentModal();
-      } else if (state.activeTab === 'services') {
-        openServiceModal();
-      } else if (state.activeTab === 'expenses') {
-        openExpenseModal();
-      } else if (state.activeTab === 'finance') {
-        openAppointmentModal();
-      }
-    });
-  }
-
-  // Settings button
-  const btnSettings = document.getElementById('btnSettings');
-  if (btnSettings) {
-    btnSettings.addEventListener('click', (e) => {
-      if (e) e.preventDefault();
-      openModal('modalSettings');
-    });
-  }
-
-  // Status filter handled via schedule-dropdown
-
-  // Service category filter
-  document.querySelectorAll('#serviceCategoryFilter .chip-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#serviceCategoryFilter .chip-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.serviceCategory = btn.getAttribute('data-category');
-      localStorage.setItem('hairstudio_service_category', state.serviceCategory);
-      renderServices();
-    });
-  });
-
-  // Expense category filter
-  document.querySelectorAll('#expenseCategoryFilter .chip-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#expenseCategoryFilter .chip-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.expenseCategory = btn.getAttribute('data-category');
-      localStorage.setItem('hairstudio_expense_category', state.expenseCategory);
-      renderExpenses();
-    });
-  });
-
-  // Finance period selector
-  document.querySelectorAll('#financePeriodSelector .period-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#financePeriodSelector .period-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.financePeriod = btn.getAttribute('data-period');
-      localStorage.setItem('hairstudio_finance_period', state.financePeriod);
-      renderFinance();
-    });
-  });
-
-  // Schedule date navigation & picker
-  const btnDatePrev = document.getElementById('btnDatePrevWeek');
-  if (btnDatePrev) {
-    btnDatePrev.addEventListener('click', (e) => {
-      e.preventDefault();
-      const cur = parseYMD(state.selectedDate);
-      cur.setDate(cur.getDate() - 7);
-      state.selectedDate = formatDateToYMD(cur);
-      setupDateStrip(cur);
-      renderSchedule();
-    });
-  }
-
-  const btnDateNext = document.getElementById('btnDateNextWeek');
-  if (btnDateNext) {
-    btnDateNext.addEventListener('click', (e) => {
-      e.preventDefault();
-      const cur = parseYMD(state.selectedDate);
-      cur.setDate(cur.getDate() + 7);
-      state.selectedDate = formatDateToYMD(cur);
-      setupDateStrip(cur);
-      renderSchedule();
-    });
-  }
-
-  const btnDateToday = document.getElementById('btnDateToday');
-  if (btnDateToday) {
-    btnDateToday.addEventListener('click', (e) => {
-      e.preventDefault();
-      const today = new Date();
-      state.selectedDate = formatDateToYMD(today);
-      setupDateStrip(today);
-      renderSchedule();
-    });
-  }
-
-  const scheduleDateInput = document.getElementById('scheduleDateInput');
-  if (scheduleDateInput) {
-    scheduleDateInput.addEventListener('change', (e) => {
-      if (e.target.value) {
-        state.selectedDate = e.target.value;
-        setupDateStrip(parseYMD(state.selectedDate));
-        renderSchedule();
-      }
-    });
-  }
-
-  // Client search input (Debounced 150ms for buttery smooth typing)
-  const clientSearchInput = document.getElementById('clientSearchInput');
-  if (clientSearchInput) {
-    let clientSearchDebounce = null;
-    clientSearchInput.addEventListener('input', (e) => {
-      clearTimeout(clientSearchDebounce);
-      clientSearchDebounce = setTimeout(() => {
-        renderClients(e.target.value.toLowerCase().trim());
-      }, 150);
-    });
-  }
-
-  // Delegated Container Event Listeners (Zero closure allocation, high-performance)
-  const dateStrip = document.getElementById('dateStrip');
-  if (dateStrip) {
-    dateStrip.addEventListener('click', (e) => {
-      const card = e.target.closest('.date-card');
-      if (card && card.dataset.date) {
-        state.selectedDate = card.dataset.date;
-        dateStrip.querySelectorAll('.date-card').forEach(c => c.classList.remove('active'));
-        card.classList.add('active');
-        updateDateNavLabel();
-        renderSchedule();
-      }
-    });
-  }
-
-  const appointmentsList = document.getElementById('appointmentsList');
-  if (appointmentsList) {
-    appointmentsList.addEventListener('click', (e) => {
-      const expandBtn = e.target.closest('.btn-timeline-expand');
-      if (expandBtn) {
-        const direction = expandBtn.dataset.direction;
-        const targetHour = Number(expandBtn.dataset.targetHour);
-        if (direction === 'earlier') {
-          state.workStartHour = targetHour;
-          safeStorage.set('hairstudio_work_start_hour', String(targetHour));
-          const startSel = document.getElementById('settingWorkStartHour');
-          if (startSel) startSel.value = String(targetHour);
-        } else if (direction === 'later') {
-          state.workEndHour = targetHour;
-          safeStorage.set('hairstudio_work_end_hour', String(targetHour));
-          const endSel = document.getElementById('settingWorkEndHour');
-          if (endSel) endSel.value = String(targetHour);
-        }
-        renderSchedule();
-        return;
-      }
-
-      const emptySlot = e.target.closest('.timeline-empty-slot');
-      if (emptySlot && emptySlot.dataset.time) {
-        openAppointmentModal(null, null, emptySlot.dataset.time);
-        return;
-      }
-
-      if (e.target.closest('.quick-actions') || e.target.closest('.compact-quick-actions') || e.target.closest('button') || e.target.closest('a')) {
-        return;
-      }
-
-      const card = e.target.closest('.appointment-card');
-      if (card && card.dataset.appId) {
-        const app = state.appointments.find(a => String(a.id) === String(card.dataset.appId));
-        if (app) openAppointmentModal(app);
-      }
-    });
-  }
-
-  const servicesList = document.getElementById('servicesList');
-  if (servicesList) {
-    servicesList.addEventListener('click', (e) => {
-      const editBtn = e.target.closest('.btn-edit-service');
-      if (editBtn && editBtn.dataset.id) {
-        const s = state.services.find(item => item.id === Number(editBtn.dataset.id));
-        if (s) openServiceModal(s);
-      }
-    });
-  }
-
-  const expensesList = document.getElementById('expensesList');
-  if (expensesList) {
-    expensesList.addEventListener('click', (e) => {
-      const editBtn = e.target.closest('.btn-edit-exp');
-      if (editBtn && editBtn.dataset.id) {
-        const exp = state.expenses.find(item => item.id === Number(editBtn.dataset.id));
-        if (exp) openExpenseModal(exp);
-      }
-    });
-  }
-
-  const clientsList = document.getElementById('clientsList');
-  if (clientsList) {
-    clientsList.addEventListener('click', (e) => {
-      const viewBtn = e.target.closest('.btn-view-client');
-      if (viewBtn && viewBtn.dataset.clientId) {
-        const client = state.clients.find(c => c.id === Number(viewBtn.dataset.clientId));
-        if (client) {
-          const clientApps = state.appointments.filter(a => 
-            (client.phone && a.clientPhone === client.phone) || 
-            (a.clientName && a.clientName.toLowerCase() === client.name.toLowerCase())
-          );
-          openClientDetailsModal(client, clientApps);
-        }
-      }
-    });
-  }
-
-  const appSelectedServicesContainer = document.getElementById('appSelectedServicesContainer');
-  if (appSelectedServicesContainer) {
-    appSelectedServicesContainer.addEventListener('click', (e) => {
-      const removeBtn = e.target.closest('.btn-remove-service');
-      if (removeBtn && removeBtn.dataset.id) {
-        const sId = Number(removeBtn.dataset.id);
-        if (sId) {
-          state.selectedServicesForAppointment.delete(sId);
-          renderSelectedServicesInModal();
-          recalcAppointmentForm();
-        }
-      }
-    });
-  }
-
-  // Forms
-  const formApp = document.getElementById('formAppointment');
-  if (formApp) formApp.addEventListener('submit', handleAppointmentSubmit);
-  const btnDelApp = document.getElementById('btnDeleteAppointment');
-  if (btnDelApp) btnDelApp.addEventListener('click', handleAppointmentDelete);
-
-  const formServ = document.getElementById('formService');
-  if (formServ) formServ.addEventListener('submit', handleServiceSubmit);
-  const btnDelServ = document.getElementById('btnDeleteService');
-  if (btnDelServ) btnDelServ.addEventListener('click', handleServiceDelete);
-
-  const formExp = document.getElementById('formExpense');
-  if (formExp) formExp.addEventListener('submit', handleExpenseSubmit);
-  const btnDelExp = document.getElementById('btnDeleteExpense');
-  if (btnDelExp) btnDelExp.addEventListener('click', handleExpenseDelete);
-
-  // Client notes save
-  const btnSaveNotes = document.getElementById('btnSaveClientNotes');
-  if (btnSaveNotes) btnSaveNotes.addEventListener('click', handleSaveClientNotes);
-
-  // Client delete
-  const btnDelClient = document.getElementById('btnDeleteClient');
-  if (btnDelClient) btnDelClient.addEventListener('click', handleDeleteClient);
-
-  // Backup & restore
-  const btnExport = document.getElementById('btnExportBackup');
-  if (btnExport) btnExport.addEventListener('click', handleExportBackup);
-  const btnImport = document.getElementById('btnImportBackup');
-  if (btnImport) {
-    btnImport.addEventListener('click', () => {
-      const fileInput = document.getElementById('importFileInput');
-      if (fileInput) fileInput.click();
-    });
-  }
-  const importInput = document.getElementById('importFileInput');
-  if (importInput) importInput.addEventListener('change', handleImportBackup);
-  const btnReset = document.getElementById('btnResetDemo');
-  if (btnReset) btnReset.addEventListener('click', handleResetDemo);
-
-  // Auto calculate end time on start time change
-  const appStartTime = document.getElementById('appStartTime');
-  if (appStartTime) appStartTime.addEventListener('change', recalcAppointmentEndTime);
-
-  // Auto-backup listeners
-  const intervalSelect = document.getElementById('settingAutoBackupInterval');
-  if (intervalSelect) {
-    intervalSelect.addEventListener('change', (e) => {
-      safeStorage.set('hairstudio_autobackup_interval', e.target.value);
-      showToast('Периодичность автокопирования сохранена');
-      checkAndRunAutoBackup();
-    });
-  }
-
-  const btnMakeBackup = document.getElementById('btnMakeAutoBackupNow');
-  if (btnMakeBackup) {
-    btnMakeBackup.addEventListener('click', async () => {
-      btnMakeBackup.disabled = true;
-      await createAutoBackup(false);
-      btnMakeBackup.disabled = false;
-    });
-  }
-
-  const btnRestoreAuto = document.getElementById('btnRestoreAutoBackup');
-  if (btnRestoreAuto) {
-    btnRestoreAuto.addEventListener('click', restoreFromAutoBackup);
-  }
-
-  // Studio / Master name save listener
-  const btnSaveName = document.getElementById('btnSaveStudioName');
-  if (btnSaveName) {
-    btnSaveName.addEventListener('click', handleSaveStudioName);
-  }
-  const inputStudioName = document.getElementById('settingStudioName');
-  if (inputStudioName) {
-    inputStudioName.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSaveStudioName();
-      }
-    });
-  }
-
-  // Theme switch listeners
-  const btnThemeToggle = document.getElementById('btnThemeToggle');
-  if (btnThemeToggle) {
-    btnThemeToggle.addEventListener('click', toggleTheme);
-  }
-  const btnThemeDark = document.getElementById('btnThemeDark');
-  if (btnThemeDark) {
-    btnThemeDark.addEventListener('click', () => applyTheme('dark'));
-  }
-  const btnThemeLight = document.getElementById('btnThemeLight');
-  if (btnThemeLight) {
-    btnThemeLight.addEventListener('click', () => applyTheme('light'));
-  }
-
-  // Working hours change listeners
-  const selectWorkStart = document.getElementById('settingWorkStartHour');
-  if (selectWorkStart) {
-    selectWorkStart.addEventListener('change', (e) => {
-      const val = parseInt(e.target.value, 10);
-      state.workStartHour = val;
-      safeStorage.set('hairstudio_work_start_hour', String(val));
-      if (state.scheduleViewMode === 'timeline') {
-        renderSchedule();
-      }
-      showToast(`Начало дня: ${String(val).padStart(2, '0')}:00`);
-    });
-  }
-
-  const selectWorkEnd = document.getElementById('settingWorkEndHour');
-  if (selectWorkEnd) {
-    selectWorkEnd.addEventListener('change', (e) => {
-      const val = parseInt(e.target.value, 10);
-      state.workEndHour = val;
-      safeStorage.set('hairstudio_work_end_hour', String(val));
-      if (state.scheduleViewMode === 'timeline') {
-        renderSchedule();
-      }
-      showToast(`Конец дня: ${String(val).padStart(2, '0')}:00`);
-    });
-  }
-
-  // Online Bookings Listeners
-  const btnOnlineBookings = document.getElementById('btnOnlineBookings');
-  if (btnOnlineBookings) {
-    btnOnlineBookings.addEventListener('click', () => {
-      openModal('modalBookings');
-      renderBookingsList();
-      checkOnlineBookings(false);
-    });
-  }
-
-  const btnRefreshBookings = document.getElementById('btnRefreshBookings');
-  if (btnRefreshBookings) {
-    btnRefreshBookings.addEventListener('click', () => {
-      checkOnlineBookings(true);
-    });
-  }
-
-  // Online Booking Settings Listeners
-  const btnSaveOnline = document.getElementById('btnSaveOnlineSettings');
-  if (btnSaveOnline) {
-    btnSaveOnline.addEventListener('click', handleSaveOnlineBookingSettings);
-  }
-
-  const btnCopyBooking = document.getElementById('btnCopyBookingLink');
-  if (btnCopyBooking) {
-    btnCopyBooking.addEventListener('click', handleCopyBookingLink);
-  }
-
-  const btnOpenBooking = document.getElementById('btnOpenBookingLink');
-  if (btnOpenBooking) {
-    btnOpenBooking.addEventListener('click', handleOpenBookingLink);
-  }
-
-  const inputMasterSlug = document.getElementById('settingMasterSlug');
-  if (inputMasterSlug) {
-    inputMasterSlug.addEventListener('input', updateBookingLinkDisplay);
-  }
-
-  // Master Authentication Listeners
-  setupAuthEventListeners();
+// ================= BANNER & STATS =================
+export function renderTodayBanner() {
+  const todayStr = formatDateToYMD(new Date());
+  const bannerDateEl = document.getElementById('bannerTodayDate');
+  if (bannerDateEl) bannerDateEl.innerText = formatFullDate(todayStr);
+
+  const todayApps = state.appointments.filter(a => a.date === todayStr);
+  const completedToday = todayApps.filter(isAppointmentCompleted);
+  const revenue = completedToday.reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
+
+  const bannerCountEl = document.getElementById('bannerTodayCount');
+  if (bannerCountEl) bannerCountEl.innerText = todayApps.length;
+
+  const bannerRevEl = document.getElementById('bannerTodayRevenue');
+  if (bannerRevEl) bannerRevEl.innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
 }
 
 // ================= MASTER AUTHENTICATION CONTROLLER =================
-
-async function initMasterAuth() {
+export async function initMasterAuth() {
   if (!window.HairSupabase) return;
   try {
     const authState = await window.HairSupabase.getSession();
@@ -1353,22 +324,14 @@ async function initMasterAuth() {
       state.currentMaster = authState.master;
 
       if (authState.master) {
-        if (authState.master.slug) {
-          safeStorage.set('hairstudio_master_slug', authState.master.slug);
-        }
+        if (authState.master.slug) safeStorage.set('hairstudio_master_slug', authState.master.slug);
         if (authState.master.salon_name) {
           safeStorage.set('hairstudio_studio_name', authState.master.salon_name);
           loadStudioName();
         }
-        if (authState.master.address) {
-          safeStorage.set('hairstudio_master_address', authState.master.address);
-        }
-        if (authState.master.city) {
-          safeStorage.set('hairstudio_master_city', authState.master.city);
-        }
-        if (authState.master.instagram) {
-          safeStorage.set('hairstudio_master_instagram', authState.master.instagram);
-        }
+        if (authState.master.address) safeStorage.set('hairstudio_master_address', authState.master.address);
+        if (authState.master.city) safeStorage.set('hairstudio_master_city', authState.master.city);
+        if (authState.master.instagram) safeStorage.set('hairstudio_master_instagram', authState.master.instagram);
         if (authState.master.gis_url) {
           safeStorage.set('hairstudio_master_2gis', authState.master.gis_url);
         } else if (authState.master.subscription_notes) {
@@ -1391,7 +354,7 @@ async function initMasterAuth() {
   }
 }
 
-function updateAuthUI(isLoggedIn) {
+export function updateAuthUI(isLoggedIn) {
   const btnAuthProfile = document.getElementById('btnAuthProfile');
   const settingsEmail = document.getElementById('settingsAccountEmail');
   const btnSettingsAction = document.getElementById('btnSettingsAuthAction');
@@ -1443,228 +406,35 @@ function updateAuthUI(isLoggedIn) {
       profileAvatar.innerText = firstChar;
     }
 
-    // Subscription status calculation
-    const subBadge = document.getElementById('authProfileSubscriptionBadge');
+    // Super-admin link visibility
     const adminSection = document.getElementById('authProfileAdminSection');
-
-    const now = new Date();
-    const endsAt = master.subscription_ends_at ? new Date(master.subscription_ends_at) : (master.trial_ends_at ? new Date(master.trial_ends_at) : null);
-    const isLifetime = master.subscription_status === 'lifetime' || (endsAt && endsAt.getFullYear() > now.getFullYear() + 20);
-
-    if (subBadge) {
-      if (isLifetime) {
-        subBadge.innerText = '👑 VIP Бессрочно';
-        subBadge.style.color = '#8b5cf6';
-        subBadge.style.borderColor = 'rgba(139, 92, 246, 0.4)';
-        subBadge.style.background = 'rgba(139, 92, 246, 0.15)';
-      } else if (endsAt) {
-        const diffDays = Math.ceil((endsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays <= 0) {
-          subBadge.innerText = `🔴 Истекла (${Math.abs(diffDays)} дн. назад)`;
-          subBadge.style.color = '#ef4444';
-          subBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-          subBadge.style.background = 'rgba(239, 68, 68, 0.15)';
-        } else if (master.subscription_status === 'active') {
-          subBadge.innerText = `🟢 Активна (${diffDays} дн.)`;
-          subBadge.style.color = '#10b981';
-          subBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-          subBadge.style.background = 'rgba(16, 185, 129, 0.15)';
-        } else {
-          subBadge.innerText = `🟡 Пробный (${diffDays} дн.)`;
-          subBadge.style.color = '#f59e0b';
-          subBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-          subBadge.style.background = 'rgba(245, 158, 11, 0.15)';
-        }
-      } else {
-        subBadge.innerText = '🟡 Пробный период';
-      }
-    }
-
     if (adminSection) {
-      const isAdmin = Boolean(master.is_admin || master.slug === 'rustem' || (user.email && user.email.includes('rustem')));
-      adminSection.style.display = isAdmin ? 'block' : 'none';
+      adminSection.style.display = master.is_admin ? 'block' : 'none';
     }
+
+    // Render Subscription status badge
+    renderSubscriptionStatus(master);
   } else {
     if (btnAuthProfile) {
-      btnAuthProfile.title = 'Войти в аккаунт мастера';
+      btnAuthProfile.title = 'Войти в кабинет мастера';
       btnAuthProfile.innerHTML = '👤';
     }
-
     if (settingsEmail) {
-      settingsEmail.innerText = 'Гостевой / Демо-режим';
+      settingsEmail.innerHTML = `⚪ Демо-режим <span style="font-weight: 400; color: var(--text-muted); font-size: 11px;">(данные на устройстве)</span>`;
     }
-
     if (btnSettingsAction) {
-      btnSettingsAction.innerText = 'Войти';
-      btnSettingsAction.className = 'btn-secondary';
+      btnSettingsAction.innerText = 'Войти / Регистрация';
+      btnSettingsAction.className = 'btn-primary';
       btnSettingsAction.style.padding = '6px 12px';
       btnSettingsAction.style.fontSize = '12px';
     }
-
     if (authProfileCard) authProfileCard.style.display = 'none';
     if (authUnauthenticatedBox) authUnauthenticatedBox.style.display = 'block';
     if (authModalTitle) authModalTitle.innerText = '👤 Кабинет мастера';
   }
-
-  updateBookingLinkDisplay();
 }
 
-function setupAuthEventListeners() {
-  // Profile button in top header
-  const btnAuthProfile = document.getElementById('btnAuthProfile');
-  if (btnAuthProfile) {
-    btnAuthProfile.addEventListener('click', () => {
-      openModal('modalAuth');
-    });
-  }
-
-  // Account action button in settings modal
-  const btnSettingsAction = document.getElementById('btnSettingsAuthAction');
-  if (btnSettingsAction) {
-    btnSettingsAction.addEventListener('click', () => {
-      if (state.authSession) {
-        handleSignOut();
-      } else {
-        closeModal('modalSettings');
-        openModal('modalAuth');
-      }
-    });
-  }
-
-  // Tab switching: Login vs Register
-  const btnTabLogin = document.getElementById('btnAuthTabLogin');
-  const btnTabRegister = document.getElementById('btnAuthTabRegister');
-  const formLogin = document.getElementById('formAuthLogin');
-  const formRegister = document.getElementById('formAuthRegister');
-
-  if (btnTabLogin && btnTabRegister) {
-    btnTabLogin.addEventListener('click', () => {
-      btnTabLogin.classList.add('active');
-      btnTabRegister.classList.remove('active');
-      if (formLogin) formLogin.style.display = 'flex';
-      if (formRegister) formRegister.style.display = 'none';
-    });
-
-    btnTabRegister.addEventListener('click', () => {
-      btnTabRegister.classList.add('active');
-      btnTabLogin.classList.remove('active');
-      if (formRegister) formRegister.style.display = 'flex';
-      if (formLogin) formLogin.style.display = 'none';
-    });
-  }
-
-  // Continue as guest button
-  const btnGuest = document.getElementById('btnContinueAsGuest');
-  if (btnGuest) {
-    btnGuest.addEventListener('click', () => {
-      closeModal('modalAuth');
-      showToast('Демо-режим активен (локально)');
-    });
-  }
-
-  // Copy & Open booking links from profile card
-  const btnCopyProfileLink = document.getElementById('btnAuthCopyBookingLink');
-  if (btnCopyProfileLink) {
-    btnCopyProfileLink.addEventListener('click', () => {
-      const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
-      const url = getMasterBookingUrl(slug);
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => {
-          showToast('Ваша ссылка онлайн-записи скопирована!');
-        }).catch(() => {
-          prompt('Скопируйте ссылку для клиентов:', url);
-        });
-      } else {
-        prompt('Скопируйте ссылку для клиентов:', url);
-      }
-    });
-  }
-
-  const btnOpenProfileLink = document.getElementById('btnAuthOpenBookingLink');
-  if (btnOpenProfileLink) {
-    btnOpenProfileLink.addEventListener('click', () => {
-      const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
-      window.open(getMasterBookingUrl(slug), '_blank');
-    });
-  }
-
-  // Subscription modal triggers & payment
-  const btnOpenSub = document.getElementById('btnOpenSubscriptionModal');
-  if (btnOpenSub) {
-    btnOpenSub.addEventListener('click', () => {
-      const master = state.currentMaster || {};
-      const now = new Date();
-      const endsAt = master.subscription_ends_at ? new Date(master.subscription_ends_at) : (master.trial_ends_at ? new Date(master.trial_ends_at) : null);
-      const isLifetime = master.subscription_status === 'lifetime' || (endsAt && endsAt.getFullYear() > now.getFullYear() + 20);
-
-      const statusEl = document.getElementById('subModalCurrentStatusText');
-      const expiresEl = document.getElementById('subModalExpiresAtText');
-      if (statusEl) {
-        statusEl.innerText = isLifetime ? '👑 Бессрочный VIP' : (master.subscription_status === 'active' ? '🟢 Подписка активна' : '🟡 Пробный период');
-      }
-      if (expiresEl) {
-        expiresEl.innerText = isLifetime ? 'Действует бессрочно' : (endsAt ? `Действует до: ${endsAt.toLocaleDateString('ru-RU')}` : 'Действует 14 дней');
-      }
-
-      openModal('modalSubscription');
-    });
-  }
-
-  const btnCopyKaspi = document.getElementById('btnCopyKaspiNumber');
-  if (btnCopyKaspi) {
-    btnCopyKaspi.addEventListener('click', () => {
-      const phone = '+77079372624';
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(phone).then(() => {
-          showToast('Номер Kaspi скопирован: +7 707 937-26-24');
-        }).catch(() => {
-          prompt('Номер Kaspi для перевода:', phone);
-        });
-      } else {
-        prompt('Номер Kaspi для перевода:', phone);
-      }
-    });
-  }
-
-  const btnSendReceipt = document.getElementById('btnSendReceiptWhatsapp');
-  if (btnSendReceipt) {
-    btnSendReceipt.addEventListener('click', () => {
-      const selectedRadio = document.querySelector('input[name="subPlanOption"]:checked');
-      const months = selectedRadio ? selectedRadio.value : '1';
-      let planName = '1 месяц (2 990 ₸)';
-      if (months === '3') planName = '3 месяца (7 990 ₸)';
-      if (months === '12') planName = '12 месяцев (24 900 ₸)';
-
-      const master = state.currentMaster || {};
-      const salon = master.salon_name || safeStorage.get('hairstudio_studio_name', 'HairStudio');
-      const name = master.name || 'Мастер';
-      const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
-
-      const waMsg = `Здравствуйте! Я оплатил(а) подписку HairStudio.\n\n✂️ Салон: ${salon}\n👤 Мастер: ${name}\n🌐 Адрес ссылки: /book.html?m=${slug}\n⭐ Выбранный тариф: ${planName}\n\nПрикрепляю чек/квитанцию перевода Kaspi:`;
-      
-      const waUrl = `https://wa.me/77079372624?text=${encodeURIComponent(waMsg)}`;
-      window.open(waUrl, '_blank');
-    });
-  }
-
-  // Logout button inside profile card
-  const btnLogout = document.getElementById('btnAuthLogout');
-  if (btnLogout) {
-    btnLogout.addEventListener('click', handleSignOut);
-  }
-
-  // Submit Login
-  if (formLogin) {
-    formLogin.addEventListener('submit', handleSignIn);
-  }
-
-  // Submit Register
-  if (formRegister) {
-    formRegister.addEventListener('submit', handleSignUp);
-  }
-}
-
-async function handleSignIn(e) {
+export async function handleSignIn(e) {
   if (e) e.preventDefault();
   const emailInput = document.getElementById('loginEmail');
   const passInput = document.getElementById('loginPassword');
@@ -1674,7 +444,7 @@ async function handleSignIn(e) {
   const password = passInput ? passInput.value.trim() : '';
 
   if (!email || !password) {
-    showToast('Введите Email и пароль', 'error');
+    showToast('Введите email и пароль', 'error');
     return;
   }
 
@@ -1695,23 +465,18 @@ async function handleSignIn(e) {
     state.currentMaster = res.master;
 
     if (res.master) {
-      if (res.master.slug) {
-        safeStorage.set('hairstudio_master_slug', res.master.slug);
-      }
+      if (res.master.slug) safeStorage.set('hairstudio_master_slug', res.master.slug);
       if (res.master.salon_name) {
         safeStorage.set('hairstudio_studio_name', res.master.salon_name);
         loadStudioName();
       }
-      if (res.master.address) {
-        safeStorage.set('hairstudio_master_address', res.master.address);
-      }
+      if (res.master.address) safeStorage.set('hairstudio_master_address', res.master.address);
     }
 
     updateAuthUI(true);
     closeModal('modalAuth');
     showToast(`✅ Добро пожаловать, ${res.master?.name || email}!`, 'success');
 
-    // Trigger cloud bookings & slots sync
     await checkOnlineBookings(false);
     triggerAutoSyncSlots();
   } catch (err) {
@@ -1724,7 +489,7 @@ async function handleSignIn(e) {
   }
 }
 
-async function handleSignUp(e) {
+export async function handleSignUp(e) {
   if (e) e.preventDefault();
   const nameInput = document.getElementById('regName');
   const salonInput = document.getElementById('regSalonName');
@@ -1749,12 +514,10 @@ async function handleSignUp(e) {
     showToast('Заполните обязательные поля (*)', 'error');
     return;
   }
-
   if (password.length < 6) {
     showToast('Пароль должен быть не менее 6 символов', 'error');
     return;
   }
-
   if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
     showToast('Адрес ссылки должен содержать только буквы, цифры и дефис', 'error');
     return;
@@ -1801,7 +564,6 @@ async function handleSignUp(e) {
     closeModal('modalAuth');
     showToast(`🎉 Кабинет мастера "${name}" создан!`, 'success');
 
-    // Sync initial busy slots
     triggerAutoSyncSlots();
   } catch (err) {
     showToast(`Ошибка регистрации: ${err.message}`, 'error');
@@ -1813,7 +575,7 @@ async function handleSignUp(e) {
   }
 }
 
-async function handleSignOut() {
+export async function handleSignOut() {
   const confirmed = confirm('Выйти из аккаунта мастера?\n(Данные сохранятся в облаке)');
   if (!confirmed) return;
 
@@ -1831,9 +593,8 @@ async function handleSignOut() {
   showToast('Вы вышли из аккаунта');
 }
 
-// ================= ONLINE BOOKINGS (SUPABASE) CONTROLLER =================
-
-function getMasterBookingUrl(slug) {
+// ================= ONLINE BOOKING SETTINGS & LINK =================
+export function getMasterBookingUrl(slug) {
   try {
     const currentOrigin = window.location.origin || '';
     const currentPath = (window.location.pathname || '').replace(/\/[^/]*$/, '');
@@ -1844,179 +605,86 @@ function getMasterBookingUrl(slug) {
   }
 }
 
-function updateBookingLinkDisplay() {
+export function updateBookingLinkDisplay() {
   try {
     const inputSlug = document.getElementById('settingMasterSlug');
     const slug = (inputSlug ? inputSlug.value.trim() : '') || 'demo';
-    const linkText = document.getElementById('settingBookingLinkText');
-    if (linkText) {
-      linkText.innerText = getMasterBookingUrl(slug);
+    const previewUrl = document.getElementById('settingBookingUrlPreview');
+    if (previewUrl) {
+      previewUrl.innerText = getMasterBookingUrl(slug);
     }
-  } catch (e) {
-    console.warn('updateBookingLinkDisplay error:', e);
-  }
+  } catch (e) {}
 }
 
-function loadOnlineBookingSettings() {
-  try {
-    const master = state.currentMaster || {};
-    const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
-    const city = master.city || safeStorage.get('hairstudio_master_city', 'Алматы');
-    const address = master.address || safeStorage.get('hairstudio_master_address', 'пр. Абая 150');
-    let gisUrl = master.gis_url || safeStorage.get('hairstudio_master_2gis', '');
-    if (!gisUrl && master.subscription_notes) {
-      try {
-        const sn = JSON.parse(master.subscription_notes);
-        if (sn.gis_url) gisUrl = sn.gis_url;
-      } catch (e) {}
-    }
-    const instagram = master.instagram || safeStorage.get('hairstudio_master_instagram', 'hairstudio_kz');
-    const studioName = master.salon_name || state.studioName || safeStorage.get('hairstudio_studio_name', 'HairStudio');
+export function loadOnlineBookingSettings() {
+  const master = state.currentMaster || {};
+  const slug = master.slug || safeStorage.get('hairstudio_master_slug', 'demo');
+  const city = master.city || safeStorage.get('hairstudio_master_city', 'Алматы');
+  const address = master.address || safeStorage.get('hairstudio_master_address', 'пр. Абая 150');
+  const gis = master.gis_url || safeStorage.get('hairstudio_master_2gis', '');
+  const insta = master.instagram || safeStorage.get('hairstudio_master_instagram', '');
 
-    const inputSlug = document.getElementById('settingMasterSlug');
-    if (inputSlug) inputSlug.value = slug;
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
 
-    const inputCity = document.getElementById('settingMasterCity');
-    if (inputCity) inputCity.value = city;
+  setVal('settingMasterSlug', slug);
+  setVal('settingMasterCity', city);
+  setVal('settingMasterAddress', address);
+  setVal('settingMaster2gis', gis);
+  setVal('settingMasterInstagram', insta);
 
-    const inputAddress = document.getElementById('settingMasterAddress');
-    if (inputAddress) inputAddress.value = address;
-
-    const inputGis = document.getElementById('settingMaster2Gis');
-    if (inputGis) inputGis.value = gisUrl;
-
-    const inputIg = document.getElementById('settingMasterInstagram');
-    if (inputIg) inputIg.value = instagram;
-
-    const inputStudioName = document.getElementById('settingStudioName');
-    if (inputStudioName) inputStudioName.value = studioName;
-
-    updateBookingLinkDisplay();
-  } catch (err) {
-    console.warn('loadOnlineBookingSettings error:', err);
-  }
+  updateBookingLinkDisplay();
 }
 
-async function handleSaveOnlineBookingSettings() {
+export async function handleSaveOnlineBookingSettings() {
   const slugInput = document.getElementById('settingMasterSlug');
   const cityInput = document.getElementById('settingMasterCity');
-  const addrInput = document.getElementById('settingMasterAddress');
-  const gisInput = document.getElementById('settingMaster2Gis');
-  const igInput = document.getElementById('settingMasterInstagram');
-  const studioInput = document.getElementById('settingStudioName');
+  const addressInput = document.getElementById('settingMasterAddress');
+  const gisInput = document.getElementById('settingMaster2gis');
+  const instaInput = document.getElementById('settingMasterInstagram');
 
-  const slug = (slugInput ? slugInput.value.trim().toLowerCase() : '') || 'demo';
-  const city = (cityInput ? cityInput.value.trim() : '') || 'Алматы';
-  const address = (addrInput ? addrInput.value.trim() : '') || '';
-  const gisUrl = (gisInput ? gisInput.value.trim() : '') || '';
-  const instagram = (igInput ? igInput.value.trim().replace(/^@/, '') : '') || '';
-  const studioName = (studioInput ? studioInput.value.trim() : '') || 'HairStudio';
+  const slug = slugInput ? slugInput.value.trim().toLowerCase() : 'demo';
+  const city = cityInput ? cityInput.value.trim() : 'Алматы';
+  const address = addressInput ? addressInput.value.trim() : '';
+  const gis = gisInput ? gisInput.value.trim() : '';
+  const insta = instaInput ? instaInput.value.trim().replace(/^@/, '') : '';
+
+  if (!slug) {
+    showToast('Укажите уникальную ссылку', 'error');
+    return;
+  }
 
   safeStorage.set('hairstudio_master_slug', slug);
   safeStorage.set('hairstudio_master_city', city);
   safeStorage.set('hairstudio_master_address', address);
-  safeStorage.set('hairstudio_master_2gis', gisUrl);
-  safeStorage.set('hairstudio_master_instagram', instagram);
-  safeStorage.set('hairstudio_studio_name', studioName);
+  safeStorage.set('hairstudio_master_2gis', gis);
+  safeStorage.set('hairstudio_master_instagram', insta);
 
-  state.studioName = studioName;
-  loadStudioName();
-
-  let cloudSyncOk = false;
-  let cloudError = '';
-
-  // Синхронизируем изменения с облаком Supabase, если мастер авторизован
   if (state.currentMaster && window.HairSupabase) {
     try {
-      const res = await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
-        slug: slug,
-        salon_name: studioName,
-        city: city,
-        address: address,
-        gis_url: gisUrl,
-        instagram: instagram
+      await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
+        slug,
+        city,
+        address,
+        gis_url: gis,
+        instagram: insta
       });
-      if (res && res.success) {
-        cloudSyncOk = true;
-        state.currentMaster.slug = slug;
-        state.currentMaster.salon_name = studioName;
-        state.currentMaster.city = city;
-        state.currentMaster.address = address;
-        state.currentMaster.gis_url = gisUrl;
-        state.currentMaster.instagram = instagram;
-      } else {
-        cloudError = res?.error || 'Ошибка записи в БД';
-        console.warn('updateMasterProfile failed:', res);
-      }
+      state.currentMaster.slug = slug;
+      state.currentMaster.city = city;
+      state.currentMaster.address = address;
+      state.currentMaster.gis_url = gis;
+      state.currentMaster.instagram = insta;
     } catch (e) {
-      cloudError = e.message;
-      console.warn('Profile sync to Supabase failed:', e);
+      console.warn('Sync profile to Supabase failed:', e);
     }
   }
 
-  updateBookingLinkDisplay();
-
-  if (state.currentMaster) {
-    if (cloudSyncOk) {
-      showToast('✅ Данные мастера сохранены и обновлены онлайн!');
-    } else {
-      showToast(`⚠️ Сохранено локально (${cloudError || 'ошибка сети'})`, 'warning');
-    }
-  } else {
-    showToast('✅ Данные мастера сохранены! (В демо-режиме)');
-  }
-
-  triggerAutoSyncSlots();
+  showToast('Настройки онлайн-записи сохранены!');
 }
 
-async function handleTestSupabaseConnection() {
-  if (!window.HairSupabase) {
-    showToast('Модуль синхронизации недоступен', 'error');
-    return;
-  }
-  const urlInput = document.getElementById('settingSupabaseUrl');
-  const keyInput = document.getElementById('settingSupabaseKey');
-  const url = urlInput ? urlInput.value.trim() : '';
-  const key = keyInput ? keyInput.value.trim() : '';
-
-  if (!url || !key) {
-    showToast('Укажите URL и Anon Key для проверки', 'error');
-    return;
-  }
-
-  window.HairSupabase.saveSettings(url, key, safeStorage.get('hairstudio_master_slug', 'demo'), true);
-  showToast('Проверка соединения...', 'info');
-
-  const res = await window.HairSupabase.testConnection();
-  if (res.ok) {
-    showToast('✅ Соединение с Supabase успешно!', 'success');
-  } else {
-    showToast(`❌ Ошибка подключения: ${res.error || res.status}`, 'error');
-  }
-}
-
-async function handleSyncCloudSlots() {
-  if (!window.HairSupabase) return;
-  const btn = document.getElementById('btnSyncCloudSlots');
-  if (btn) btn.disabled = true;
-  showToast('Синхронизация слотов...', 'info');
-
-  try {
-    const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
-    const res = await window.HairSupabase.syncMasterBusySlots(targetMasterId, state.appointments);
-    if (res.success) {
-      showToast(`✅ Синхронизировано ${res.count} слотов!`);
-    } else {
-      showToast(`Ошибка синхронизации: ${res.error || 'неизвестно'}`, 'error');
-    }
-  } catch (err) {
-    showToast(`Ошибка: ${err.message}`, 'error');
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-function handleCopyBookingLink() {
+export function handleCopyBookingLink() {
   const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
   const fullUrl = getMasterBookingUrl(slug);
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2030,102 +698,14 @@ function handleCopyBookingLink() {
   }
 }
 
-function handleOpenBookingLink() {
+export function handleOpenBookingLink() {
   const slug = state.currentMaster?.slug || safeStorage.get('hairstudio_master_slug', 'demo');
   const fullUrl = getMasterBookingUrl(slug);
   window.open(fullUrl, '_blank');
 }
 
-let isSyncingSlots = false;
-let pendingSlotsSync = false;
-let autoSyncSlotsTimer = null;
-
-function triggerAutoSyncSlots() {
-  if (autoSyncSlotsTimer) clearTimeout(autoSyncSlotsTimer);
-  return new Promise((resolve) => {
-    autoSyncSlotsTimer = setTimeout(async () => {
-      autoSyncSlotsTimer = null;
-      await executeAutoSyncSlots();
-      resolve();
-    }, 350);
-  });
-}
-
-async function executeAutoSyncSlots() {
-  if (!window.HairSupabase) return;
-  if (!navigator.onLine) {
-    pendingSlotsSync = true;
-    console.log('📶 Оффлайн: синхронизация слотов отложена до подключения к интернету');
-    return;
-  }
-  if (isSyncingSlots) {
-    pendingSlotsSync = true;
-    return;
-  }
-
-  isSyncingSlots = true;
-  try {
-    const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
-    await window.HairSupabase.syncMasterBusySlots(targetMasterId, state.appointments);
-    pendingSlotsSync = false;
-  } catch (e) {
-    console.warn('Auto sync slots failed (will retry when online):', e);
-    pendingSlotsSync = true;
-  } finally {
-    isSyncingSlots = false;
-    if (pendingSlotsSync && navigator.onLine) {
-      pendingSlotsSync = false;
-      setTimeout(triggerAutoSyncSlots, 4000);
-    }
-  }
-}
-
-async function triggerSyncMasterServices() {
-  if (!window.HairSupabase || !window.HairSupabase.syncMasterServices) return;
-  try {
-    const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
-    if (!targetMasterId) return;
-    await window.HairSupabase.syncMasterServices(targetMasterId, state.services);
-  } catch (e) {
-    console.warn('Auto sync master services failed:', e);
-  }
-}
-
-function playBookingNotificationSound() {
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    if (ctx.state === 'suspended') {
-      ctx.resume();
-    }
-    const now = ctx.currentTime;
-    
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(659.25, now); // E5
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(987.77, now + 0.12); // B5
-
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.3, now + 0.04);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-
-    osc1.connect(gain);
-    osc2.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc1.start(now);
-    osc1.stop(now + 0.15);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.8);
-  } catch (e) {}
-}
-
-async function checkOnlineBookings(notify = false) {
+// ================= INCOMING ONLINE BOOKINGS CONTROLLER =================
+export async function checkOnlineBookings(notify = false) {
   if (!window.HairSupabase) return;
   try {
     const targetMasterId = state.currentMaster ? state.currentMaster.id : null;
@@ -2134,9 +714,8 @@ async function checkOnlineBookings(notify = false) {
     state.pendingBookings = Array.isArray(bookings) ? bookings : [];
     const newCount = state.pendingBookings.length;
 
-    // Trigger audio chime if new online booking arrived
     if (newCount > prevCount && prevCount >= 0) {
-      playBookingNotificationSound();
+      playChime();
       showToast(`🔔 Новая онлайн-заявка от клиента! (${newCount})`, 'info');
     }
 
@@ -2167,7 +746,7 @@ async function checkOnlineBookings(notify = false) {
   }
 }
 
-function renderBookingsList() {
+export function renderBookingsList() {
   const container = document.getElementById('bookingsList');
   if (!container) return;
 
@@ -2214,7 +793,6 @@ function renderBookingsList() {
     `;
   }).join('');
 
-  // Attach action buttons
   container.querySelectorAll('[data-booking-action="accept"]').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-id');
@@ -2230,11 +808,10 @@ function renderBookingsList() {
   });
 }
 
-async function handleAcceptBooking(bookingId) {
+export async function handleAcceptBooking(bookingId) {
   const b = state.pendingBookings.find(item => item.id === bookingId);
   if (!b) return;
 
-  // Check for time collision with existing appointments
   const existingSameDay = state.appointments.filter(a => a.date === b.date && a.status !== 'cancelled');
   const collision = existingSameDay.find(a => timesOverlap(b.start_time, b.end_time, a.startTime, a.endTime || addMinutesToTime(a.startTime, 60)));
 
@@ -2243,10 +820,9 @@ async function handleAcceptBooking(bookingId) {
     if (!ok) return;
   }
 
-  // Calculate matching services from master's services list if any
   let totalPrice = 0;
   const matchedServices = [];
-  const serviceNamesSplit = b.service_names.split(',').map(s => s.trim().toLowerCase());
+  const serviceNamesSplit = (b.service_names || '').split(',').map(s => s.trim().toLowerCase());
 
   state.services.forEach(srv => {
     if (serviceNamesSplit.some(name => srv.name.toLowerCase().includes(name) || name.includes(srv.name.toLowerCase()))) {
@@ -2261,25 +837,23 @@ async function handleAcceptBooking(bookingId) {
     date: b.date,
     startTime: b.start_time,
     endTime: b.end_time,
-    services: matchedServices.length > 0 ? matchedServices : [{ name: b.service_names, price: 0, duration: b.duration_min }],
+    services: matchedServices.length > 0 ? matchedServices : [{ name: b.service_names, price: 0, duration: b.duration_min || 60 }],
     totalPrice: totalPrice,
     materialsUsed: '',
     notes: b.client_note ? `[Онлайн-запись] ${b.client_note}` : '[Онлайн-запись]',
     status: 'scheduled',
     channel: 'whatsapp',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updated_at: new Date().toISOString()
   };
 
   try {
-    // 1. Add appointment to master's IndexedDB
     await window.db.addAppointment(appData);
 
-    // 2. Mark as confirmed in cloud
     if (window.HairSupabase) {
       await window.HairSupabase.updateBookingStatus(bookingId, 'confirmed');
     }
 
-    // 3. Remove from pending and re-render
     state.pendingBookings = state.pendingBookings.filter(item => item.id !== bookingId);
     renderBookingsList();
     const badge = document.getElementById('bookingBadge');
@@ -2288,28 +862,16 @@ async function handleAcceptBooking(bookingId) {
       badge.innerText = String(state.pendingBookings.length);
     }
 
-    // 4. Reload schedule
     await reloadData();
     triggerAutoSyncSlots();
 
-    // 5. Open WhatsApp chat with prefilled template
     const cleanPhone = cleanPhoneForWhatsapp(b.client_phone);
-
     const address = safeStorage.get('hairstudio_master_address', 'пр. Абая 150');
     const waText = `Здравствуйте, ${b.client_name}!\n\nВаша запись подтверждена ✅\n✂️ Услуга: ${b.service_names}\n📅 Дата: ${formatFullDate(b.date)}\n⏰ Время: ${b.start_time} - ${b.end_time}\n📍 Адрес: ${address}\n\nЖдем вас! Если планы изменятся, пожалуйста, предупредите заранее.`;
 
     if (cleanPhone) {
       const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`;
-      // Mobile Safari / Chrome blocks window.open after async awaits - use location.href on mobile or fallback
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (isMobile) {
-        window.location.href = waUrl;
-      } else {
-        const opened = window.open(waUrl, '_blank');
-        if (!opened || opened.closed || typeof opened.closed === 'undefined') {
-          window.location.href = waUrl;
-        }
-      }
+      window.open(waUrl, '_blank');
     }
 
     showToast('Запись принята и добавлена в расписание!');
@@ -2319,7 +881,7 @@ async function handleAcceptBooking(bookingId) {
   }
 }
 
-async function handleRejectBooking(bookingId) {
+export async function handleRejectBooking(bookingId) {
   const b = state.pendingBookings.find(item => item.id === bookingId);
   if (!b) return;
 
@@ -2339,20 +901,11 @@ async function handleRejectBooking(bookingId) {
       badge.innerText = String(state.pendingBookings.length);
     }
 
-    // Open WhatsApp with polite reschedule message
     const cleanPhone = cleanPhoneForWhatsapp(b.client_phone);
     if (cleanPhone) {
       const waText = `Здравствуйте, ${b.client_name}!\n\nК сожалению, ${formatFullDate(b.date)} в ${b.start_time} я не смогу вас принять (время занято).\nМогу предложить свободные окна в другой день. Подскажите, когда вам удобно?`;
       const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`;
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (isMobile) {
-        window.location.href = waUrl;
-      } else {
-        const opened = window.open(waUrl, '_blank');
-        if (!opened || opened.closed || typeof opened.closed === 'undefined') {
-          window.location.href = waUrl;
-        }
-      }
+      window.open(waUrl, '_blank');
     }
 
     showToast('Заявка отклонена');
@@ -2362,1186 +915,10 @@ async function handleRejectBooking(bookingId) {
   }
 }
 
-function switchTab(tabId, shouldScroll = true) {
-  const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
-  if (!validTabs.includes(tabId)) return;
-
-  // Save current tab scroll position before switching
-  if (state.activeTab && state.activeTab !== tabId) {
-    sessionStorage.setItem('hairstudio_scroll_' + state.activeTab, String(window.scrollY));
-  }
-
-  state.activeTab = tabId;
-  localStorage.setItem('hairstudio_active_tab', tabId);
-
-  // Sync URL hash without jumping
-  if (window.location.hash !== '#' + tabId) {
-    history.replaceState(null, '', '#' + tabId);
-  }
-
-  document.querySelectorAll('.nav-item').forEach(b => {
-    b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
-  });
-  document.querySelectorAll('.tab-screen').forEach(s => {
-    s.classList.toggle('active', s.id === `tab-${tabId}`);
-  });
-
-  // Render on-demand when switching tabs
-  if (tabId === 'schedule') renderSchedule();
-  else if (tabId === 'clients') renderClients();
-  else if (tabId === 'services') renderServices();
-  else if (tabId === 'expenses') renderExpenses();
-  else if (tabId === 'finance') renderFinance();
-
-  if (shouldScroll) {
-    const savedScroll = sessionStorage.getItem('hairstudio_scroll_' + tabId);
-    if (savedScroll !== null) {
-      window.scrollTo({ top: Number(savedScroll), behavior: 'instant' });
-    } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }
-}
-
-// ================= BANNER =================
-function renderTodayBanner() {
-  const todayStr = formatDateToYMD(new Date());
-  document.getElementById('bannerTodayDate').innerText = formatFullDate(todayStr);
-
-  const todayApps = state.appointments.filter(a => a.date === todayStr);
-  const completedToday = todayApps.filter(isAppointmentCompleted);
-  const revenue = completedToday.reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
-
-  document.getElementById('bannerTodayCount').innerText = todayApps.length;
-  document.getElementById('bannerTodayRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
-}
-
-function updateDateNavLabel() {
-  const label = document.getElementById('currentMonthYearLabel');
-  const dateInput = document.getElementById('scheduleDateInput');
-  const d = parseYMD(state.selectedDate);
-  if (label) {
-    label.innerText = `${RU_MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}`;
-  }
-  if (dateInput) {
-    dateInput.value = state.selectedDate;
-  }
-}
-
-// ================= DATE STRIP (CALENDAR) =================
-function setupDateStrip(baseDate = null) {
-  const strip = document.getElementById('dateStrip');
-  if (!strip) return;
-
-  const activeDate = parseYMD(state.selectedDate);
-  const center = baseDate instanceof Date ? baseDate : activeDate;
-  const fragment = document.createDocumentFragment();
-
-  // Pre-calculate active dates Set for dots immediately ($O(N)$ once)
-  const appDates = new Set(state.appointments.map(a => a.date));
-
-  // Generate 25 days (-10 to +14 days from center)
-  for (let i = -10; i <= 14; i++) {
-    const d = new Date(center);
-    d.setDate(center.getDate() + i);
-    const dateStr = formatDateToYMD(d);
-    const hasApps = appDates.has(dateStr);
-    const isActive = dateStr === state.selectedDate;
-
-    const card = document.createElement('div');
-    card.className = `date-card${isActive ? ' active' : ''}${hasApps ? ' has-appointments' : ''}`;
-    card.dataset.date = dateStr;
-
-    card.innerHTML = `
-      <span class="day-name">${RU_DAYS[d.getDay()]}</span>
-      <span class="day-number">${d.getDate()}</span>
-      <span class="date-dot"></span>
-    `;
-
-    fragment.appendChild(card);
-  }
-
-  strip.innerHTML = '';
-  strip.appendChild(fragment);
-
-  updateDateNavLabel();
-
-  // Smoothly center the active date card using rAF
-  requestAnimationFrame(() => {
-    const activeCard = strip.querySelector('.date-card.active');
-    if (activeCard) {
-      const scrollLeft = activeCard.offsetLeft - (strip.clientWidth / 2) + (activeCard.offsetWidth / 2);
-      strip.scrollTo({
-        left: Math.max(0, scrollLeft),
-        behavior: 'smooth'
-      });
-    }
-  });
-}
-
-function renderDateStripDots() {
-  const strip = document.getElementById('dateStrip');
-  if (!strip) return;
-  const appDates = new Set(state.appointments.map(a => a.date));
-  strip.querySelectorAll('.date-card').forEach(card => {
-    card.classList.toggle('has-appointments', appDates.has(card.dataset.date));
-  });
-}
-
-// ================= SCHEDULE / APPOINTMENTS =================
-function renderSchedule() {
-  const container = document.getElementById('appointmentsList');
-  if (!container) return;
-  container.innerHTML = '';
-
-  let dayApps = state.appointments.filter(a => a.date === state.selectedDate);
-
-  // Apply status filter
-  if (state.scheduleFilter !== 'all') {
-    dayApps = dayApps.filter(a => a.status === state.scheduleFilter);
-  }
-
-  // Sort by start time
-  dayApps.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
-
-  // HELPER TO CREATE APPOINTMENT CARD ELEMENT
-  function createAppointmentCard(app) {
-    const isCompact = state.cardDensity === 'compact';
-    const isPast = isAppointmentPast(app);
-    const card = document.createElement('div');
-    card.className = 'appointment-card' + (isPast ? ' is-past' : '') + (app.status === 'cancelled' ? ' status-cancelled' : '') + (isCompact ? ' compact' : '');
-    card.dataset.appId = app.id;
-
-    const phoneClean = cleanPhoneForWhatsapp(app.clientPhone);
-    const waLink = phoneClean ? `https://wa.me/${phoneClean}` : null;
-    const telLink = phoneClean ? `tel:${cleanPhoneForTel(app.clientPhone)}` : null;
-
-    if (isCompact) {
-      // COMPACT CARD (NO PRICE, NO STATUS BADGE)
-      const servicesSummary = (app.services || []).map(s => escapeHtml(s.name)).join(', ');
-      const detailsArr = [];
-      if (servicesSummary) detailsArr.push(servicesSummary);
-      if (app.materialsUsed) detailsArr.push('Расход: ' + escapeHtml(app.materialsUsed));
-      if (app.notes) detailsArr.push('📝 ' + escapeHtml(app.notes));
-      const detailsText = detailsArr.join(' • ');
-
-      const noteTooltip = [
-        app.materialsUsed ? 'Расход: ' + escapeHtml(app.materialsUsed) : '',
-        app.notes ? 'Заметка: ' + escapeHtml(app.notes) : ''
-      ].filter(Boolean).join(' | ');
-
-      card.innerHTML = `
-        <div class="compact-row-top">
-          <div class="compact-time-name">
-            <span class="compact-time">${app.startTime || '--:--'}–${app.endTime || '--:--'}</span>
-            <span class="compact-client-name" title="${escapeHtml(app.clientName)}">${escapeHtml(app.clientName)}</span>
-            ${app.channel === 'whatsapp' ? '<span class="compact-channel-icon" title="Запись через WhatsApp">💬</span>' : ''}
-            ${noteTooltip ? `<span class="compact-note-indicator" title="${noteTooltip}">📝</span>` : ''}
-          </div>
-          <div class="compact-quick-actions">
-            ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener noreferrer" class="compact-mini-btn whatsapp" title="WhatsApp">💬</a>` : ''}
-            ${telLink ? `<a href="${telLink}" class="compact-mini-btn call" title="Позвонить">📞</a>` : ''}
-          </div>
-        </div>
-
-        ${detailsText ? `
-          <div class="compact-row-bottom">
-            <div class="compact-services-text" title="${detailsText}">
-              ${detailsText}
-            </div>
-          </div>
-        ` : ''}
-      `;
-    } else {
-      // COMFORTABLE DETAILED CARD (NO PRICE, NO STATUS BADGE)
-      const servicesHtml = (app.services || []).map(s => `
-        <span class="service-tag">${escapeHtml(s.name)}</span>
-      `).join('');
-
-      card.innerHTML = `
-        <div class="card-top">
-          <div class="time-slot">
-            🕒 ${app.startTime || '--:--'} — ${app.endTime || '--:--'}
-            ${app.channel === 'whatsapp' 
-              ? '<span class="channel-badge whatsapp" title="Запись через WhatsApp">💬 WhatsApp</span>' 
-              : '<span class="channel-badge phone" title="Запись по телефонному звонку">📞 Звонок</span>'}
-          </div>
-          <div class="quick-actions">
-            ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp" title="Написать в WhatsApp">💬</a>` : ''}
-            ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
-          </div>
-        </div>
-
-        <div class="card-client-info">
-          <div class="client-name">${escapeHtml(app.clientName)}</div>
-          ${app.clientPhone ? `<div class="client-phone">📞 ${escapeHtml(app.clientPhone)}</div>` : ''}
-        </div>
-
-        ${servicesHtml ? `
-          <div class="services-tags">
-            ${servicesHtml}
-          </div>
-        ` : ''}
-
-        ${app.materialsUsed ? `
-          <div class="materials-note">
-            <strong>Расход:</strong> ${escapeHtml(app.materialsUsed)}
-          </div>
-        ` : ''}
-
-        ${app.notes ? `
-          <div class="materials-note" style="border-left-color: var(--accent-gold); margin-top: 4px;">
-            📝 ${escapeHtml(app.notes)}
-          </div>
-        ` : ''}
-      `;
-    }
-
-    return card;
-  }
-
-  // MODE 1: HOURLY TIMELINE / CALENDAR VIEW
-  if (state.scheduleViewMode === 'timeline') {
-    const timeline = document.createElement('div');
-    timeline.className = 'timeline-container' + (state.cardDensity === 'compact' ? ' compact' : '');
-
-    // Single pass: Pre-index appointments by hour ($O(N)$)
-    const appsByHour = {};
-    let minHour = typeof state.workStartHour === 'number' ? state.workStartHour : 8;
-    let maxHour = typeof state.workEndHour === 'number' ? state.workEndHour : 22;
-
-    dayApps.forEach(a => {
-      if (a.startTime) {
-        const h = parseInt(a.startTime.split(':')[0], 10);
-        if (!isNaN(h)) {
-          if (h < minHour) minHour = Math.max(0, h);
-          if (h > maxHour) maxHour = Math.min(23, h);
-          if (!appsByHour[h]) appsByHour[h] = [];
-          appsByHour[h].push(a);
-        }
-      }
-      if (a.endTime) {
-        const eh = parseInt(a.endTime.split(':')[0], 10);
-        if (!isNaN(eh) && eh > maxHour) {
-          maxHour = Math.min(23, eh);
-        }
-      }
-    });
-
-    if (minHour > maxHour) {
-      const tmp = minHour;
-      minHour = maxHour;
-      maxHour = tmp;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    // Button to easily show earlier morning hours if not at 00:00
-    if (minHour > 0) {
-      const expandEarlierRow = document.createElement('div');
-      expandEarlierRow.className = 'timeline-expand-row';
-      const earlierTarget = Math.max(0, minHour - 2);
-      expandEarlierRow.innerHTML = `
-        <button type="button" class="btn-timeline-expand" data-direction="earlier" data-target-hour="${earlierTarget}" title="Показать более ранние утренние часы">
-          ⬆ Показать с ${String(earlierTarget).padStart(2, '0')}:00 (ранние часы)
-        </button>
-      `;
-      fragment.appendChild(expandEarlierRow);
-    }
-
-    for (let hour = minHour; hour <= maxHour; hour++) {
-      const hourStr = String(hour).padStart(2, '0') + ':00';
-      const hourApps = appsByHour[hour] || [];
-
-      if (hourApps.length === 0) {
-        // Empty hour slot
-        const row = document.createElement('div');
-        row.className = 'timeline-hour-row';
-
-        const timeCol = document.createElement('div');
-        timeCol.className = 'timeline-time-col';
-        timeCol.innerText = hourStr;
-
-        const contentCol = document.createElement('div');
-        contentCol.className = 'timeline-content-col';
-
-        const emptySlot = document.createElement('div');
-        emptySlot.className = 'timeline-empty-slot';
-        emptySlot.dataset.time = hourStr;
-        const emptySlotHint = state.cardDensity === 'compact'
-          ? `<span>Свободно на ${hourStr}</span>`
-          : `<span>Свободно на ${hourStr} <span style="font-size: 11px; opacity: 0.7;">(нажмите для записи)</span></span>`;
-        emptySlot.innerHTML = `
-          <span class="empty-slot-plus">+</span>
-          ${emptySlotHint}
-        `;
-        contentCol.appendChild(emptySlot);
-
-        row.appendChild(timeCol);
-        row.appendChild(contentCol);
-        fragment.appendChild(row);
-      } else {
-        // Each appointment gets its own row, its own exact time, and its own centered dot
-        hourApps.forEach(app => {
-          const row = document.createElement('div');
-          row.className = 'timeline-hour-row';
-
-          const isPast = isAppointmentPast(app);
-          const timeCol = document.createElement('div');
-          timeCol.className = 'timeline-time-col has-app' + (isPast ? ' is-past' : '');
-          timeCol.innerText = app.startTime || hourStr;
-
-          const contentCol = document.createElement('div');
-          contentCol.className = 'timeline-content-col';
-          contentCol.appendChild(createAppointmentCard(app));
-
-          row.appendChild(timeCol);
-          row.appendChild(contentCol);
-          fragment.appendChild(row);
-        });
-      }
-    }
-
-    // Button to easily show later evening hours if not at 23:00
-    if (maxHour < 23) {
-      const expandLaterRow = document.createElement('div');
-      expandLaterRow.className = 'timeline-expand-row';
-      const laterTarget = Math.min(23, maxHour + 2);
-      expandLaterRow.innerHTML = `
-        <button type="button" class="btn-timeline-expand" data-direction="later" data-target-hour="${laterTarget}" title="Показать более поздние вечерние часы">
-          ⬇ Показать до ${String(laterTarget).padStart(2, '0')}:00 (поздние часы)
-        </button>
-      `;
-      fragment.appendChild(expandLaterRow);
-    }
-
-    timeline.appendChild(fragment);
-    container.appendChild(timeline);
-    return;
-  }
-
-  // MODE 2: CLASSIC LIST VIEW
-  if (dayApps.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">✂️</div>
-        <div style="font-weight: 600; font-size: 16px; margin-bottom: 4px; color: var(--text-main);">
-          На этот день записей нет
-        </div>
-        <div>Нажмите кнопку «+», чтобы записать клиента на ${formatDisplayDate(state.selectedDate)}</div>
-      </div>
-    `;
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  dayApps.forEach(app => {
-    fragment.appendChild(createAppointmentCard(app));
-  });
-  container.appendChild(fragment);
-}
-
-function openAppointmentModal(app = null, preselectedClient = null, defaultStartTime = null, defaultDate = null) {
-  state.editingAppointmentId = app ? app.id : null;
-  state.selectedServicesForAppointment.clear();
-
-  const modalTitle = document.getElementById('modalAppointmentTitle');
-  const btnDelete = document.getElementById('btnDeleteAppointment');
-
-  modalTitle.innerText = app ? 'Редактирование записи' : 'Новая запись';
-  setChannelMode(app && app.channel ? app.channel : 'phone');
-  btnDelete.style.display = app ? 'block' : 'none';
-
-  // Populate existing clients dropdown
-  const clientsCountEl = document.getElementById('existingClientsCount');
-  if (clientsCountEl) clientsCountEl.innerText = state.clients.length;
-
-  const clientSelect = document.getElementById('appExistingClientSelect');
-  if (clientSelect) {
-    clientSelect.innerHTML = '<option value="">-- Выберите клиента из базы --</option>';
-    const sortedClients = [...state.clients].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-    sortedClients.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = `${c.name}${c.phone ? ' (' + c.phone + ')' : ''}`;
-      clientSelect.appendChild(opt);
-    });
-  }
-
-  // Fill services dropdown with optgroups
-  const addServiceSelect = document.getElementById('appAddServiceSelect');
-  if (addServiceSelect) {
-    addServiceSelect.innerHTML = '<option value="">➕ Выберите услугу для добавления...</option>';
-    
-    // Group services by category
-    const categories = {};
-    state.services.forEach(s => {
-      const cat = s.category || 'Другое';
-      if (!categories[cat]) categories[cat] = [];
-      categories[cat].push(s);
-    });
-
-    Object.keys(categories).sort().forEach(cat => {
-      const optgroup = document.createElement('optgroup');
-      optgroup.label = cat;
-      categories[cat].forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.id;
-        opt.textContent = `${s.name} — ${Number(s.price).toLocaleString('ru-RU')} ₸ (${s.duration} мин)`;
-        optgroup.appendChild(opt);
-      });
-      addServiceSelect.appendChild(optgroup);
-    });
-  }
-
-  // If editing existing appointment, pre-select its services
-  if (app && app.services) {
-    app.services.forEach(as => {
-      const matched = state.services.find(s => s.name === as.name);
-      if (matched) {
-        state.selectedServicesForAppointment.add(matched.id);
-      }
-    });
-  }
-
-  // Render selected chips
-  renderSelectedServicesInModal();
-
-  if (app) {
-    document.getElementById('appId').value = app.id;
-    document.getElementById('appDate').value = app.date || state.selectedDate;
-    document.getElementById('appStartTime').value = app.startTime || '10:00';
-    document.getElementById('appEndTime').value = app.endTime || '11:00';
-    document.getElementById('appTotalPrice').value = app.totalPrice || 0;
-    document.getElementById('appMaterialsUsed').value = app.materialsUsed || '';
-    document.getElementById('appNotes').value = app.notes || '';
-    document.getElementById('appStatus').value = app.status || 'scheduled';
-
-    // Find if client exists in database
-    const matchedClient = state.clients.find(c => 
-      (app.clientName && c.name.toLowerCase() === app.clientName.toLowerCase()) ||
-      (app.clientPhone && c.phone && c.phone === app.clientPhone)
-    );
-
-    if (matchedClient) {
-      setClientMode('existing');
-      document.getElementById('appExistingClientSelect').value = matchedClient.id;
-      updateClientSelectionFromDropdown();
-    } else {
-      setClientMode('new');
-      document.getElementById('appClientName').value = app.clientName || '';
-      document.getElementById('appClientPhone').value = app.clientPhone || '';
-    }
-  } else if (preselectedClient) {
-    document.getElementById('appId').value = '';
-    document.getElementById('appDate').value = state.selectedDate;
-    document.getElementById('appStartTime').value = '10:00';
-    document.getElementById('appEndTime').value = '11:00';
-    document.getElementById('appTotalPrice').value = '';
-    document.getElementById('appMaterialsUsed').value = '';
-    document.getElementById('appNotes').value = preselectedClient.notes || '';
-    document.getElementById('appStatus').value = 'scheduled';
-
-    setClientMode('existing');
-    document.getElementById('appExistingClientSelect').value = preselectedClient.id;
-    updateClientSelectionFromDropdown();
-  } else {
-    document.getElementById('appId').value = '';
-    document.getElementById('appDate').value = defaultDate || state.selectedDate;
-    const defaultHour = typeof state.workStartHour === 'number' ? state.workStartHour : 9;
-    const initStartTime = defaultStartTime || `${String(defaultHour).padStart(2, '0')}:00`;
-    document.getElementById('appStartTime').value = initStartTime;
-    const [startH, startM] = initStartTime.split(':').map(Number);
-    const endH = String(Math.min(23, (startH || defaultHour) + 1)).padStart(2, '0');
-    const endM = String(startM || 0).padStart(2, '0');
-    document.getElementById('appEndTime').value = `${endH}:${endM}`;
-    document.getElementById('appTotalPrice').value = '';
-    document.getElementById('appMaterialsUsed').value = '';
-    document.getElementById('appNotes').value = '';
-    document.getElementById('appStatus').value = 'scheduled';
-
-    if (state.clients.length > 0) {
-      setClientMode('existing');
-      document.getElementById('appExistingClientSelect').value = '';
-      updateClientSelectionFromDropdown();
-    } else {
-      setClientMode('new');
-      document.getElementById('appClientName').value = '';
-      document.getElementById('appClientPhone').value = '';
-    }
-  }
-
-  openModal('modalAppointment');
-}
-
-function recalcAppointmentForm() {
-  let totalPrice = 0;
-  let totalDuration = 0;
-
-  state.selectedServicesForAppointment.forEach(id => {
-    const s = state.services.find(item => item.id === id);
-    if (s) {
-      totalPrice += Number(s.price) || 0;
-      totalDuration += Number(s.duration) || 60;
-    }
-  });
-
-  document.getElementById('appTotalPrice').value = totalPrice;
-
-  const defaultH = typeof state.workStartHour === 'number' ? state.workStartHour : 9;
-  const fallbackTime = `${String(defaultH).padStart(2, '0')}:00`;
-  const startTime = document.getElementById('appStartTime').value || fallbackTime;
-  document.getElementById('appEndTime').value = addMinutesToTime(startTime, totalDuration || 60);
-}
-
-function recalcAppointmentEndTime() {
-  let totalDuration = 0;
-  state.selectedServicesForAppointment.forEach(id => {
-    const s = state.services.find(item => item.id === id);
-    if (s) totalDuration += Number(s.duration) || 60;
-  });
-  const defaultH = typeof state.workStartHour === 'number' ? state.workStartHour : 9;
-  const fallbackTime = `${String(defaultH).padStart(2, '0')}:00`;
-  const startTime = document.getElementById('appStartTime').value || fallbackTime;
-  document.getElementById('appEndTime').value = addMinutesToTime(startTime, totalDuration || 60);
-}
-
-async function handleAppointmentSubmit(e) {
-  e.preventDefault();
-  const submitBtn = e.target.querySelector('[type="submit"]');
-  if (submitBtn) { if (submitBtn.disabled) return; submitBtn.disabled = true; }
-
-  try {
-    const selectedServices = [];
-    state.selectedServicesForAppointment.forEach(id => {
-      const s = state.services.find(item => item.id === id);
-      if (s) {
-        selectedServices.push({
-          name: s.name,
-          price: Number(s.price),
-          duration: Number(s.duration)
-        });
-      }
-    });
-
-    if (selectedServices.length === 0) {
-      showToast('Пожалуйста, выберите хотя бы одну услугу', 'error');
-      return;
-    }
-
-    // QA-HIGH-2: Robust client name determination
-    let clientName = '';
-    let clientPhone = '';
-
-    if (state.appointmentClientMode === 'existing') {
-      const select = document.getElementById('appExistingClientSelect');
-      const selectedId = Number(select.value);
-      const client = state.clients.find(c => c.id === selectedId);
-      if (!client) {
-        showToast('Пожалуйста, выберите клиента из списка или переключитесь на «Новый клиент»', 'error');
-        return;
-      }
-      clientName = client.name;
-      clientPhone = client.phone || '';
-    } else {
-      clientName = document.getElementById('appClientName').value.trim();
-      clientPhone = document.getElementById('appClientPhone').value.trim();
-      if (!clientName) {
-        showToast('Пожалуйста, введите имя нового клиента', 'error');
-        document.getElementById('appClientName').focus();
-        return;
-      }
-    }
-
-    const appDate = document.getElementById('appDate').value;
-    const startTime = document.getElementById('appStartTime').value;
-    const endTime = document.getElementById('appEndTime').value;
-
-    if (!appDate || !startTime || !endTime) {
-      showToast('Пожалуйста, укажите дату и время записи', 'error');
-      return;
-    }
-
-    // QA-MED-3: Conflict & overlap check with existing non-cancelled appointments
-    const currentAppId = state.editingAppointmentId ? Number(state.editingAppointmentId) : null;
-    const overlappingApps = state.appointments.filter(a => {
-      if (a.date !== appDate) return false;
-      if (currentAppId && a.id === currentAppId) return false;
-      if (a.status === 'cancelled') return false;
-      return timesOverlap(a.startTime, a.endTime, startTime, endTime);
-    });
-
-    if (overlappingApps.length > 0) {
-      const conflictList = overlappingApps.map(a => `• ${a.clientName || 'Запись'} (${a.startTime || '??'}–${a.endTime || '??'})`).join('\n');
-      const proceed = confirm(`⚠️ Внимание! Наложение по времени с существующей записью:\n${conflictList}\n\nВсё равно сохранить запись?`);
-      if (!proceed) return;
-    }
-
-    const appData = {
-      clientName,
-      clientPhone,
-      date: appDate,
-      startTime,
-      endTime,
-      services: selectedServices,
-      totalPrice: Number(document.getElementById('appTotalPrice').value) || 0,
-      materialsUsed: document.getElementById('appMaterialsUsed').value.trim(),
-      notes: document.getElementById('appNotes').value.trim(),
-      status: document.getElementById('appStatus').value,
-      channel: document.getElementById('appChannel').value || 'phone',
-      updatedAt: new Date().toISOString()
-    };
-
-    if (state.editingAppointmentId) {
-      appData.id = Number(state.editingAppointmentId);
-      await window.db.updateAppointment(appData);
-      showToast('Запись успешно обновлена');
-    } else {
-      appData.createdAt = new Date().toISOString();
-      await window.db.addAppointment(appData);
-      showToast('Запись клиента успешно создана');
-    }
-
-    // Auto-save client to database if not exists
-    if (clientName) {
-      try {
-        await window.db.saveClientIfNotExists({
-          name: clientName,
-          phone: clientPhone,
-          notes: ''
-        });
-      } catch (cErr) {
-        console.warn('Auto-saving client failed:', cErr);
-      }
-    }
-
-    closeModal('modalAppointment');
-    await reloadData();
-    triggerAutoSyncSlots();
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
-  }
-}
-
-async function handleAppointmentDelete() {
-  if (!state.editingAppointmentId) return;
-  if (confirm('Вы уверены, что хотите удалить эту запись?')) {
-    await window.db.deleteAppointment(state.editingAppointmentId);
-    closeModal('modalAppointment');
-    showToast('Запись удалена');
-    await reloadData();
-    triggerAutoSyncSlots();
-  }
-}
-
-// ================= SERVICES =================
-function renderServices() {
-  const container = document.getElementById('servicesList');
-  if (!container) return;
-  container.innerHTML = '';
-
-  let list = state.services;
-  if (state.serviceCategory !== 'all') {
-    list = list.filter(s => s.category === state.serviceCategory);
-  }
-
-  if (list.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">✂️</div>
-        <div>В этой категории пока нет услуг</div>
-      </div>
-    `;
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  list.forEach(s => {
-    const card = document.createElement('div');
-    card.className = 'data-item-card';
-    card.innerHTML = `
-      <div class="item-left">
-        <div class="item-title">${escapeHtml(s.name)}</div>
-        <div class="item-meta">
-          <span>🏷️ ${escapeHtml(s.category)}</span>
-          <span>⏱️ ${s.duration} мин</span>
-        </div>
-      </div>
-      <div class="item-right">
-        <div class="item-price">${(Number(s.price) || 0).toLocaleString('ru-RU')} ₸</div>
-        <button class="btn-action-small btn-edit-service" data-id="${s.id}" title="Редактировать">✏️</button>
-      </div>
-    `;
-    fragment.appendChild(card);
-  });
-  container.appendChild(fragment);
-}
-
-function openServiceModal(s = null) {
-  state.editingServiceId = s ? s.id : null;
-  document.getElementById('modalServiceTitle').innerText = s ? 'Редактировать услугу' : 'Новая услуга';
-  document.getElementById('btnDeleteService').style.display = s ? 'block' : 'none';
-
-  if (s) {
-    document.getElementById('serviceId').value = s.id;
-    document.getElementById('serviceName').value = s.name;
-    document.getElementById('serviceCategory').value = s.category;
-    document.getElementById('servicePrice').value = s.price;
-    document.getElementById('serviceDuration').value = s.duration;
-  } else {
-    document.getElementById('serviceId').value = '';
-    document.getElementById('serviceName').value = '';
-    document.getElementById('serviceCategory').value = 'Стрижки';
-    document.getElementById('servicePrice').value = '';
-    document.getElementById('serviceDuration').value = 60;
-  }
-
-  openModal('modalService');
-}
-
-async function handleServiceSubmit(e) {
-  e.preventDefault();
-  const serviceData = {
-    name: document.getElementById('serviceName').value.trim(),
-    category: document.getElementById('serviceCategory').value,
-    price: Number(document.getElementById('servicePrice').value) || 0,
-    duration: Number(document.getElementById('serviceDuration').value) || 60
-  };
-
-  if (state.editingServiceId) {
-    serviceData.id = Number(state.editingServiceId);
-    await window.db.updateService(serviceData);
-    showToast('Услуга обновлена');
-  } else {
-    await window.db.addService(serviceData);
-    showToast('Услуга добавлена в прайс-лист');
-  }
-
-  closeModal('modalService');
-  await reloadData();
-  triggerSyncMasterServices();
-}
-
-async function handleServiceDelete() {
-  if (!state.editingServiceId) return;
-  const service = state.services.find(item => item.id === Number(state.editingServiceId));
-  const serviceName = service ? service.name : '';
-  const usedCount = state.appointments.filter(a => a.services && a.services.some(srv => srv.name === serviceName)).length;
-
-  let msg = 'Удалить эту услугу из прайс-листа?';
-  if (usedCount > 0) {
-    msg = `Внимание: услуга «${serviceName}» использована в ${usedCount} записи(ях) в истории.\nОна будет удалена из прайс-листа для новых записей, но история прошлых визитов сохранится.\n\nПродолжить удаление?`;
-  }
-
-  if (confirm(msg)) {
-    await window.db.deleteService(state.editingServiceId);
-    closeModal('modalService');
-    showToast('Услуга удалена');
-    await reloadData();
-    triggerSyncMasterServices();
-  }
-}
-
-// ================= EXPENSES & MATERIALS =================
-function renderExpenses() {
-  const container = document.getElementById('expensesList');
-  if (!container) return;
-  container.innerHTML = '';
-
-  // Calculate this month's expenses
-  const now = new Date();
-  const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const monthExpenses = state.expenses.filter(e => (e.date || '').startsWith(currentMonthPrefix));
-  const monthTotal = monthExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const monthTotalEl = document.getElementById('expensesMonthTotal');
-  if (monthTotalEl) {
-    monthTotalEl.innerText = `${monthTotal.toLocaleString('ru-RU')} ₸`;
-  }
-
-  let list = state.expenses;
-  if (state.expenseCategory !== 'all') {
-    list = list.filter(e => e.category === state.expenseCategory);
-  }
-
-  // Sort by date desc
-  list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-  if (list.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📦</div>
-        <div>В этой категории расходов нет</div>
-      </div>
-    `;
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  list.forEach(exp => {
-    const card = document.createElement('div');
-    card.className = 'data-item-card';
-    card.innerHTML = `
-      <div class="item-left">
-        <div class="item-title">${escapeHtml(exp.title)}</div>
-        <div class="item-meta">
-          <span>📅 ${formatDisplayDate(exp.date)}</span>
-          <span>📁 ${escapeHtml(exp.category)}</span>
-          ${exp.quantity ? `<span>🔢 ${escapeHtml(exp.quantity)}</span>` : ''}
-        </div>
-        ${exp.notes ? `<div style="font-size: 11px; color: var(--text-subtle); margin-top: 2px;">${escapeHtml(exp.notes)}</div>` : ''}
-      </div>
-      <div class="item-right">
-        <div class="item-price expense">-${(Number(exp.amount) || 0).toLocaleString('ru-RU')} ₸</div>
-        <button class="btn-action-small btn-edit-exp" data-id="${exp.id}" title="Редактировать">✏️</button>
-      </div>
-    `;
-    fragment.appendChild(card);
-  });
-  container.appendChild(fragment);
-}
-
-function openExpenseModal(exp = null) {
-  state.editingExpenseId = exp ? exp.id : null;
-  document.getElementById('modalExpenseTitle').innerText = exp ? 'Редактировать расход' : 'Новая закупка';
-  document.getElementById('btnDeleteExpense').style.display = exp ? 'block' : 'none';
-
-  if (exp) {
-    document.getElementById('expenseId').value = exp.id;
-    document.getElementById('expenseTitle').value = exp.title;
-    document.getElementById('expenseCategory').value = exp.category;
-    document.getElementById('expenseAmount').value = exp.amount;
-    document.getElementById('expenseQuantity').value = exp.quantity || '';
-    document.getElementById('expenseDate').value = exp.date;
-    document.getElementById('expenseNotes').value = exp.notes || '';
-  } else {
-    document.getElementById('expenseId').value = '';
-    document.getElementById('expenseTitle').value = '';
-    document.getElementById('expenseCategory').value = 'Красители';
-    document.getElementById('expenseAmount').value = '';
-    document.getElementById('expenseQuantity').value = '';
-    document.getElementById('expenseDate').value = formatDateToYMD(new Date());
-    document.getElementById('expenseNotes').value = '';
-  }
-
-  openModal('modalExpense');
-}
-
-async function handleExpenseSubmit(e) {
-  e.preventDefault();
-  const expData = {
-    title: document.getElementById('expenseTitle').value.trim(),
-    category: document.getElementById('expenseCategory').value,
-    amount: Number(document.getElementById('expenseAmount').value) || 0,
-    quantity: document.getElementById('expenseQuantity').value.trim(),
-    date: document.getElementById('expenseDate').value,
-    notes: document.getElementById('expenseNotes').value.trim()
-  };
-
-  if (state.editingExpenseId) {
-    expData.id = Number(state.editingExpenseId);
-    await window.db.updateExpense(expData);
-    showToast('Расход обновлен');
-  } else {
-    await window.db.addExpense(expData);
-    showToast('Закупка материалов сохранена');
-  }
-
-  closeModal('modalExpense');
-  await reloadData();
-}
-
-async function handleExpenseDelete() {
-  if (!state.editingExpenseId) return;
-  if (confirm('Удалить эту запись о расходе?')) {
-    await window.db.deleteExpense(state.editingExpenseId);
-    closeModal('modalExpense');
-    showToast('Расход удален');
-    await reloadData();
-  }
-}
-
-// ================= CLIENTS =================
-function renderClients(searchQuery = '') {
-  const container = document.getElementById('clientsList');
-  if (!container) return;
-  container.innerHTML = '';
-
-  let list = state.clients;
-  if (searchQuery) {
-    list = list.filter(c => 
-      (c.name || '').toLowerCase().includes(searchQuery) ||
-      (c.phone || '').includes(searchQuery)
-    );
-  }
-
-  if (list.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">👥</div>
-        <div>Клиенты не найдены</div>
-      </div>
-    `;
-    return;
-  }
-
-  // Pre-index appointments by phone and name in a single pass O(N)
-  const appsByPhone = new Map();
-  const appsByName = new Map();
-  for (let i = 0; i < state.appointments.length; i++) {
-    const a = state.appointments[i];
-    if (a.clientPhone) {
-      let arr = appsByPhone.get(a.clientPhone);
-      if (!arr) { arr = []; appsByPhone.set(a.clientPhone, arr); }
-      arr.push(a);
-    }
-    if (a.clientName) {
-      const nameKey = a.clientName.trim().toLowerCase();
-      let arr = appsByName.get(nameKey);
-      if (!arr) { arr = []; appsByName.set(nameKey, arr); }
-      arr.push(a);
-    }
-  }
-
-  const fragment = document.createDocumentFragment();
-
-  list.forEach(c => {
-    // Instant O(1) lookup
-    const phoneApps = c.phone ? appsByPhone.get(c.phone) : null;
-    const nameApps = c.name ? appsByName.get(c.name.trim().toLowerCase()) : null;
-
-    let clientApps = [];
-    if (phoneApps && nameApps && phoneApps !== nameApps) {
-      const set = new Set(phoneApps.map(a => a.id));
-      clientApps = [...phoneApps];
-      nameApps.forEach(a => { if (!set.has(a.id)) clientApps.push(a); });
-    } else {
-      clientApps = phoneApps || nameApps || [];
-    }
-
-    const totalSpent = clientApps
-      .filter(isAppointmentCompleted)
-      .reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
-
-    const phoneClean = cleanPhoneForWhatsapp(c.phone);
-    const waLink = phoneClean ? `https://wa.me/${phoneClean}` : null;
-    const telLink = phoneClean ? `tel:${cleanPhoneForTel(c.phone)}` : null;
-
-    const card = document.createElement('div');
-    card.className = 'data-item-card';
-    card.innerHTML = `
-      <div class="item-left">
-        <div class="item-title">${escapeHtml(c.name)}</div>
-        <div class="item-meta">
-          <span>📞 ${escapeHtml(c.phone || 'без телефона')}</span>
-          <span>📅 ${clientApps.length} визит(ов)</span>
-          <span>💰 ${totalSpent.toLocaleString('ru-RU')} ₸</span>
-        </div>
-        ${c.notes ? `<div style="font-size: 11px; color: var(--accent-gold-light); margin-top: 2px;">🎨 ${escapeHtml(c.notes)}</div>` : ''}
-      </div>
-      <div class="item-right">
-        <div class="quick-actions">
-          ${waLink ? `<a href="${waLink}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp" title="WhatsApp">💬</a>` : ''}
-          ${telLink ? `<a href="${telLink}" class="btn-action-small call" title="Позвонить">📞</a>` : ''}
-          <button class="btn-action-small btn-view-client" data-client-id="${c.id}" title="Карточка клиента">📋</button>
-        </div>
-      </div>
-    `;
-
-    fragment.appendChild(card);
-  });
-
-  container.appendChild(fragment);
-}
-
-function openClientDetailsModal(client, clientApps) {
-  state.viewingClientId = client.id;
-  document.getElementById('clientDetailsName').innerText = client.name;
-  document.getElementById('clientDetailsPhone').innerText = client.phone || 'Телефон не указан';
-  document.getElementById('clientDetailsVisitsCount').innerText = `${clientApps.length} визит(ов) • Всего: ${clientApps.filter(isAppointmentCompleted).reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0).toLocaleString('ru-RU')} ₸`;
-  document.getElementById('clientDetailsNotes').value = client.notes || '';
-
-  // Actions
-  const phoneClean = cleanPhoneForWhatsapp(client.phone);
-  const actionsBox = document.getElementById('clientDetailsActions');
-  actionsBox.innerHTML = `
-    ${phoneClean ? `<a href="https://wa.me/${phoneClean}" target="_blank" rel="noopener noreferrer" class="btn-action-small whatsapp">💬</a>` : ''}
-    ${phoneClean ? `<a href="tel:${cleanPhoneForTel(client.phone)}" class="btn-action-small call">📞</a>` : ''}
-  `;
-
-  // History list
-  const histBox = document.getElementById('clientVisitHistory');
-  histBox.innerHTML = '';
-  if (clientApps.length === 0) {
-    histBox.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">Записей пока нет</div>';
-  } else {
-    clientApps.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    clientApps.forEach(a => {
-      const item = document.createElement('div');
-      item.style.cssText = 'background: var(--bg-card); padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); font-size: 13px; cursor: pointer; transition: transform 0.15s, border-color 0.15s;';
-      item.title = 'Нажмите для редактирования записи';
-      item.innerHTML = `
-        <div style="display: flex; justify-content: space-between; font-weight: 600;">
-          <span>${formatDisplayDate(a.date)} ${a.startTime}</span>
-          <span style="color: var(--accent-gold-light);">${(Number(a.totalPrice) || 0).toLocaleString('ru-RU')} ₸</span>
-        </div>
-        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-          ${(a.services || []).map(s => escapeHtml(s.name)).join(', ')}
-        </div>
-        ${a.materialsUsed ? `<div style="font-size: 11px; color: var(--accent-gold); margin-top: 2px;">Расход: ${escapeHtml(a.materialsUsed)}</div>` : ''}
-      `;
-      item.addEventListener('click', () => {
-        closeModal('modalClientDetails');
-        openAppointmentModal(a);
-      });
-      histBox.appendChild(item);
-    });
-  }
-
-  openModal('modalClientDetails');
-}
-
-async function handleSaveClientNotes() {
-  if (!state.viewingClientId) return;
-  const client = state.clients.find(c => c.id === state.viewingClientId);
-  if (!client) return;
-
-  client.notes = document.getElementById('clientDetailsNotes').value.trim();
-  await window.db.updateClient(client);
-  showToast('Формулы и заметки сохранены');
-  await reloadData();
-}
-
-async function handleDeleteClient() {
-  if (!state.viewingClientId) return;
-  const client = state.clients.find(c => c.id === state.viewingClientId);
-  if (!client) return;
-
-  if (confirm(`Удалить клиента "${client.name}" из базы?\n\nЗаписи клиента в расписании сохранятся.`)) {
-    await window.db.deleteClient(state.viewingClientId);
-    closeModal('modalClientDetails');
-    showToast('Клиент удалён из базы');
-    await reloadData();
-  }
-}
-
-// ================= FINANCE & PROFIT =================
-function renderFinance() {
-  const period = state.financePeriod;
-  const now = new Date();
-  const todayStr = formatDateToYMD(now);
-
-  let filteredAppointments = [];
-  let filteredExpenses = [];
-  let subText = 'Ваш реальный чистый доход за выбранный период';
-
-  if (period === 'today') {
-    filteredAppointments = state.appointments.filter(a => a.date === todayStr);
-    filteredExpenses = state.expenses.filter(e => e.date === todayStr);
-    subText = 'Чистый доход за сегодня';
-  } else if (period === 'week') {
-    // Current week
-    const firstDay = new Date(now);
-    const dayIndex = (now.getDay() + 6) % 7; // Monday = 0
-    firstDay.setDate(now.getDate() - dayIndex);
-    const firstDayStr = formatDateToYMD(firstDay);
-
-    filteredAppointments = state.appointments.filter(a => a.date >= firstDayStr && a.date <= todayStr);
-    filteredExpenses = state.expenses.filter(e => e.date >= firstDayStr && e.date <= todayStr);
-    subText = 'Чистый доход за текущую неделю';
-  } else if (period === 'month') {
-    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    filteredAppointments = state.appointments.filter(a => (a.date || '').startsWith(monthPrefix));
-    filteredExpenses = state.expenses.filter(e => (e.date || '').startsWith(monthPrefix));
-    subText = `Чистый доход за ${RU_MONTHS_FULL[now.getMonth()]} ${now.getFullYear()}`;
-  } else if (period === 'prev_month') {
-    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthPrefix = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-    filteredAppointments = state.appointments.filter(a => (a.date || '').startsWith(prevMonthPrefix));
-    filteredExpenses = state.expenses.filter(e => (e.date || '').startsWith(prevMonthPrefix));
-    subText = `Чистый доход за ${RU_MONTHS_FULL[prevDate.getMonth()]} ${prevDate.getFullYear()}`;
-  } else {
-    // All time
-    filteredAppointments = state.appointments;
-    filteredExpenses = state.expenses;
-    subText = 'Чистый доход за всё время';
-  }
-
-  // Calculate revenue (only completed appointments)
-  const completedApps = filteredAppointments.filter(isAppointmentCompleted);
-  const revenue = completedApps.reduce((sum, a) => sum + (Number(a.totalPrice) || 0), 0);
-
-  // Calculate expenses
-  const expensesTotal = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-  // Net Profit
-  const netProfit = revenue - expensesTotal;
-
-  // Average Check
-  const avgCheck = completedApps.length > 0 ? Math.round(revenue / completedApps.length) : 0;
-
-  // Margin
-  const margin = revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0;
-
-  // DOM Updates
-  const profitElem = document.getElementById('statNetProfit');
-  profitElem.innerText = `${netProfit.toLocaleString('ru-RU')} ₸`;
-  profitElem.className = `stat-card-value ${netProfit >= 0 ? 'profit' : 'expense'}`;
-
-  const subElem = document.getElementById('statNetProfitSub');
-  if (subElem) subElem.innerText = subText;
-
-  document.getElementById('statTotalRevenue').innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
-  document.getElementById('statAppointmentsCount').innerText = `${completedApps.length} вып. записей`;
-
-  document.getElementById('statTotalExpenses').innerText = `${expensesTotal.toLocaleString('ru-RU')} ₸`;
-  document.getElementById('statExpensesCount').innerText = `${filteredExpenses.length} закупок`;
-
-  document.getElementById('statAvgCheck').innerText = `${avgCheck.toLocaleString('ru-RU')} ₸`;
-  document.getElementById('statMargin').innerText = `${margin}%`;
-
-  // Top Services Breakdown
-  const topServicesBox = document.getElementById('topServicesContainer');
-  topServicesBox.innerHTML = '';
-
-  const serviceStats = {};
-  completedApps.forEach(a => {
-    (a.services || []).forEach(s => {
-      if (!serviceStats[s.name]) {
-        serviceStats[s.name] = { count: 0, revenue: 0 };
-      }
-      serviceStats[s.name].count += 1;
-      serviceStats[s.name].revenue += Number(s.price) || 0;
-    });
-  });
-
-  const sortedServices = Object.entries(serviceStats)
-    .sort((a, b) => b[1].revenue - a[1].revenue)
-    .slice(0, 5);
-
-  if (sortedServices.length === 0) {
-    topServicesBox.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">Нет данных за выбранный период</div>';
-  } else {
-    sortedServices.forEach(([name, data]) => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;';
-      row.innerHTML = `
-        <div>
-          <div style="font-weight: 600; color: var(--text-main);">${escapeHtml(name)}</div>
-          <div style="font-size: 11px; color: var(--text-muted);">${data.count} раз(а)</div>
-        </div>
-        <div style="font-weight: 700; color: var(--accent-gold-light);">${data.revenue.toLocaleString('ru-RU')} ₸</div>
-      `;
-      topServicesBox.appendChild(row);
-    });
-  }
-}
-
-// ================= BACKUP & RESTORE (WHATSAPP-STYLE AUTO BACKUP) =================
-async function checkAndRunAutoBackup() {
-  updateAutoBackupUI();
-
+// ================= BACKUP & RESTORE =================
+export async function checkAndRunAutoBackup() {
   const interval = safeStorage.get('hairstudio_autobackup_interval', 'weekly');
-  if (interval === 'off') return;
+  if (interval === 'disabled') return;
 
   const lastBackup = safeStorage.get('hairstudio_last_backup_time');
   const now = Date.now();
@@ -3555,22 +932,18 @@ async function checkAndRunAutoBackup() {
       needBackup = true;
     } else {
       const diffMs = now - lastTime;
-      if (interval === 'daily' && diffMs >= 24 * 60 * 60 * 1000) {
-        needBackup = true;
-      } else if (interval === 'weekly' && diffMs >= 7 * 24 * 60 * 60 * 1000) {
-        needBackup = true;
-      } else if (interval === 'monthly' && diffMs >= 30 * 24 * 60 * 60 * 1000) {
-        needBackup = true;
-      }
+      if (interval === 'daily' && diffMs >= 24 * 60 * 60 * 1000) needBackup = true;
+      else if (interval === 'weekly' && diffMs >= 7 * 24 * 60 * 60 * 1000) needBackup = true;
+      else if (interval === 'monthly' && diffMs >= 30 * 24 * 60 * 60 * 1000) needBackup = true;
     }
   }
 
   if (needBackup) {
-    await createAutoBackup(true); // silent in background
+    await createAutoBackup(true);
   }
 }
 
-async function createAutoBackup(silent = false) {
+export async function createAutoBackup(silent = false) {
   try {
     const jsonString = await window.db.exportAllData();
     safeStorage.set('hairstudio_autobackup_data', jsonString);
@@ -3587,18 +960,14 @@ async function createAutoBackup(silent = false) {
     safeStorage.set('hairstudio_last_backup_meta', JSON.stringify(meta));
     updateAutoBackupUI();
 
-    if (!silent) {
-      showToast('Автокопия сохранена на устройстве!');
-    }
+    if (!silent) showToast('Автокопия сохранена на устройстве!');
   } catch (err) {
     console.error('AutoBackup error:', err);
-    if (!silent) {
-      showToast('Ошибка при создании автокопии', 'error');
-    }
+    if (!silent) showToast('Ошибка при создании автокопии', 'error');
   }
 }
 
-async function restoreFromAutoBackup() {
+export async function restoreFromAutoBackup() {
   const backupJson = safeStorage.get('hairstudio_autobackup_data');
   if (!backupJson) {
     showToast('Автокопия не найдена', 'error');
@@ -3630,7 +999,7 @@ async function restoreFromAutoBackup() {
   }
 }
 
-function updateAutoBackupUI() {
+export function updateAutoBackupUI() {
   try {
     const intervalSelect = document.getElementById('settingAutoBackupInterval');
     if (intervalSelect) {
@@ -3683,7 +1052,7 @@ function updateAutoBackupUI() {
   }
 }
 
-async function handleExportBackup() {
+export async function handleExportBackup() {
   try {
     const jsonString = await window.db.exportAllData();
     const blob = new Blob([jsonString], { type: 'application/json' });
@@ -3701,7 +1070,7 @@ async function handleExportBackup() {
   }
 }
 
-async function handleImportBackup(e) {
+export async function handleImportBackup(e) {
   const file = e.target.files[0];
   if (!file) return;
 
@@ -3720,7 +1089,7 @@ async function handleImportBackup(e) {
   reader.readAsText(file);
 }
 
-async function handleResetDemo() {
+export async function handleResetDemo() {
   if (confirm('Сбросить текущие данные и загрузить демонстрационные примеры?')) {
     await window.db.clearAll();
     await window.db.loadSeedData();
@@ -3730,35 +1099,173 @@ async function handleResetDemo() {
   }
 }
 
+// ================= THEME & CUSTOM BRANDING =================
+export function loadStudioName() {
+  const savedName = safeStorage.get('hairstudio_studio_name', 'HairStudio');
+  const headerElem = document.getElementById('headerStudioName');
+  if (headerElem) headerElem.innerText = savedName;
 
-// ================= APPOINTMENT CLIENT SELECTION =================
-function setClientMode(mode) {
+  const inputElem = document.getElementById('settingStudioName');
+  if (inputElem) inputElem.value = savedName;
+
+  document.title = `${savedName} — Запись клиентов и Учет`;
+}
+
+export async function handleSaveStudioName() {
+  const inputElem = document.getElementById('settingStudioName');
+  if (!inputElem) return;
+  const newName = inputElem.value.trim() || 'HairStudio';
+  safeStorage.set('hairstudio_studio_name', newName);
+  state.studioName = newName;
+  loadStudioName();
+
+  if (state.currentMaster && window.HairSupabase) {
+    try {
+      await window.HairSupabase.updateMasterProfile(state.currentMaster.id, {
+        salon_name: newName
+      });
+      state.currentMaster.salon_name = newName;
+    } catch (e) {
+      console.warn('Sync studio name to Supabase failed:', e);
+    }
+  }
+  showToast('Название сохранено!');
+}
+
+export function applyTheme(theme) {
+  const isLight = theme === 'light';
+  if (isLight) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.setAttribute('content', isLight ? '#f6f8fb' : '#0a0e17');
+  }
+
+  const btnToggle = document.getElementById('btnThemeToggle');
+  if (btnToggle) {
+    btnToggle.innerText = isLight ? '☀️' : '🌙';
+    btnToggle.title = isLight ? 'Светлая тема (нажмите для тёмной)' : 'Тёмная тема (нажмите для светлой)';
+  }
+
+  const btnDark = document.getElementById('btnThemeDark');
+  const btnLight = document.getElementById('btnThemeLight');
+  if (btnDark && btnLight) {
+    btnDark.classList.toggle('active', !isLight);
+    btnLight.classList.toggle('active', isLight);
+  }
+
+  localStorage.setItem('hairstudio_theme', isLight ? 'light' : 'dark');
+}
+
+export function toggleTheme() {
+  const currentTheme = localStorage.getItem('hairstudio_theme') || 'dark';
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  applyTheme(newTheme);
+  showToast(newTheme === 'light' ? 'Включена светлая тема' : 'Включена тёмная тема');
+}
+
+export function updateDensityToggleUI() {
+  const btn = document.getElementById('btnDensityToggle');
+  const icon = document.getElementById('densityToggleIcon');
+  const text = document.getElementById('densityToggleText');
+  if (!btn) return;
+  const isCompact = state.cardDensity === 'compact';
+  btn.classList.toggle('is-compact', isCompact);
+  if (icon) icon.innerText = isCompact ? '⚡' : '📱';
+  if (text) text.innerText = isCompact ? 'Компактно' : 'Подробно';
+}
+
+export function restoreSavedPreferences() {
+  state.cardDensity = localStorage.getItem('hairstudio_card_density') || 'compact';
+  updateDensityToggleUI();
+
+  const savedTheme = localStorage.getItem('hairstudio_theme') || 'dark';
+  applyTheme(savedTheme);
+
+  loadStudioName();
+
+  const savedViewMode = localStorage.getItem('hairstudio_schedule_view');
+  if (savedViewMode) state.scheduleViewMode = savedViewMode;
+
+  const savedStatusFilter = safeStorage.get('hairstudio_schedule_filter');
+  if (savedStatusFilter) state.scheduleFilter = savedStatusFilter;
+
+  const savedFinancePeriod = localStorage.getItem('hairstudio_finance_period');
+  if (savedFinancePeriod) state.financePeriod = savedFinancePeriod;
+
+  const savedServiceCategory = localStorage.getItem('hairstudio_service_category');
+  if (savedServiceCategory) state.serviceCategory = savedServiceCategory;
+
+  const savedExpenseCategory = localStorage.getItem('hairstudio_expense_category');
+  if (savedExpenseCategory) state.expenseCategory = savedExpenseCategory;
+
+  const savedWorkStart = localStorage.getItem('hairstudio_work_start_hour');
+  state.workStartHour = savedWorkStart !== null ? parseInt(savedWorkStart, 10) : 8;
+
+  const savedWorkEnd = localStorage.getItem('hairstudio_work_end_hour');
+  state.workEndHour = savedWorkEnd !== null ? parseInt(savedWorkEnd, 10) : 22;
+
+  populateWorkHourSelects();
+}
+
+function populateWorkHourSelects() {
+  const startSelect = document.getElementById('settingWorkStartHour');
+  const endSelect = document.getElementById('settingWorkEndHour');
+  if (!startSelect || !endSelect) return;
+
+  startSelect.innerHTML = '';
+  endSelect.innerHTML = '';
+
+  for (let h = 0; h <= 23; h++) {
+    const hStr = String(h).padStart(2, '0') + ':00';
+
+    const optStart = document.createElement('option');
+    optStart.value = String(h);
+    optStart.textContent = hStr;
+    if (h === state.workStartHour) optStart.selected = true;
+    startSelect.appendChild(optStart);
+
+    const optEnd = document.createElement('option');
+    optEnd.value = String(h);
+    optEnd.textContent = hStr;
+    if (h === state.workEndHour) optEnd.selected = true;
+    endSelect.appendChild(optEnd);
+  }
+}
+
+// ================= APPOINTMENT FORM HELPERS =================
+export function setClientMode(mode) {
   state.appointmentClientMode = mode;
   const btnExisting = document.getElementById('btnClientModeExisting');
   const btnNew = document.getElementById('btnClientModeNew');
   const blockExisting = document.getElementById('existingClientBlock');
   const blockNew = document.getElementById('newClientBlock');
   const nameInput = document.getElementById('appClientName');
-  const phoneInput = document.getElementById('appClientPhone');
 
   if (mode === 'existing') {
-    btnExisting.classList.add('active');
-    btnNew.classList.remove('active');
-    blockExisting.style.display = 'block';
-    blockNew.style.display = 'none';
+    if (btnExisting) btnExisting.classList.add('active');
+    if (btnNew) btnNew.classList.remove('active');
+    if (blockExisting) blockExisting.style.display = 'block';
+    if (blockNew) blockNew.style.display = 'none';
     updateClientSelectionFromDropdown();
   } else {
-    btnNew.classList.add('active');
-    btnExisting.classList.remove('active');
-    blockExisting.style.display = 'none';
-    blockNew.style.display = 'block';
-    document.getElementById('selectedClientCard').style.display = 'none';
-    nameInput.focus();
+    if (btnNew) btnNew.classList.add('active');
+    if (btnExisting) btnExisting.classList.remove('active');
+    if (blockExisting) blockExisting.style.display = 'none';
+    if (blockNew) blockNew.style.display = 'block';
+    const card = document.getElementById('selectedClientCard');
+    if (card) card.style.display = 'none';
+    if (nameInput) nameInput.focus();
   }
 }
 
-function updateClientSelectionFromDropdown() {
+export function updateClientSelectionFromDropdown() {
   const select = document.getElementById('appExistingClientSelect');
+  if (!select) return;
   const nameInput = document.getElementById('appClientName');
   const phoneInput = document.getElementById('appClientPhone');
   const card = document.getElementById('selectedClientCard');
@@ -3771,31 +1278,32 @@ function updateClientSelectionFromDropdown() {
   const client = state.clients.find(c => c.id === selectedId);
 
   if (client) {
-    nameInput.value = client.name;
-    phoneInput.value = client.phone || '';
-    cardName.innerText = client.name;
-    cardPhone.innerText = client.phone || 'Телефон не указан';
-    card.style.display = 'block';
+    if (nameInput) nameInput.value = client.name;
+    if (phoneInput) phoneInput.value = client.phone || '';
+    if (cardName) cardName.innerText = client.name;
+    if (cardPhone) cardPhone.innerText = client.phone || 'Телефон не указан';
+    if (card) card.style.display = 'block';
 
     if (client.notes && client.notes.trim()) {
-      formulaPrompt.style.display = 'block';
-      formulaText.innerText = client.notes;
+      if (formulaPrompt) formulaPrompt.style.display = 'block';
+      if (formulaText) formulaText.innerText = client.notes;
     } else {
-      formulaPrompt.style.display = 'none';
+      if (formulaPrompt) formulaPrompt.style.display = 'none';
     }
   } else {
-    nameInput.value = '';
-    phoneInput.value = '';
-    card.style.display = 'none';
-    formulaPrompt.style.display = 'none';
+    if (nameInput) nameInput.value = '';
+    if (phoneInput) phoneInput.value = '';
+    if (card) card.style.display = 'none';
+    if (formulaPrompt) formulaPrompt.style.display = 'none';
   }
 }
 
-function copyClientFormulaToNotes() {
-  const formulaText = document.getElementById('selectedClientFormulaText').innerText;
+export function copyClientFormulaToNotes() {
+  const formulaEl = document.getElementById('selectedClientFormulaText');
+  const formulaText = formulaEl ? formulaEl.innerText : '';
   const notesField = document.getElementById('appNotes');
 
-  if (!formulaText) return;
+  if (!formulaText || !notesField) return;
 
   if (notesField.value.trim()) {
     if (!notesField.value.includes(formulaText)) {
@@ -3807,48 +1315,7 @@ function copyClientFormulaToNotes() {
   showToast('Формула окрашивания скопирована в заметку');
 }
 
-
-function renderSelectedServicesInModal() {
-  const container = document.getElementById('appSelectedServicesContainer');
-  if (!container) return;
-  container.innerHTML = '';
-
-  if (state.selectedServicesForAppointment.size === 0) {
-    container.innerHTML = `
-      <div class="empty-services-hint">
-        Услуги пока не выбраны (выберите из выпадающего списка выше)
-      </div>
-    `;
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  state.selectedServicesForAppointment.forEach(id => {
-    const s = state.services.find(item => item.id === id);
-    if (!s) return;
-
-    const chip = document.createElement('div');
-    chip.className = 'selected-service-chip';
-    chip.innerHTML = `
-      <div class="chip-service-info">
-        <span class="chip-service-name">${escapeHtml(s.name)}</span>
-        <span class="chip-service-meta">${escapeHtml(s.category)} • ${s.duration} мин</span>
-      </div>
-      <div class="chip-service-right">
-        <span class="chip-service-price">${Number(s.price).toLocaleString('ru-RU')} ₸</span>
-        <button type="button" class="btn-remove-service" data-id="${s.id}" title="Удалить услугу">✕</button>
-      </div>
-    `;
-
-    fragment.appendChild(chip);
-  });
-
-  container.appendChild(fragment);
-}
-
-
-// ================= CHANNEL & CLIPBOARD PHONE HELPERS =================
-function setChannelMode(channel) {
+export function setChannelMode(channel) {
   const hiddenInput = document.getElementById('appChannel');
   if (hiddenInput) hiddenInput.value = channel;
 
@@ -3865,7 +1332,7 @@ function setChannelMode(channel) {
   }
 }
 
-async function handlePastePhone() {
+export async function handlePastePhone() {
   try {
     const text = await navigator.clipboard.readText();
     if (!text || !text.trim()) {
@@ -3890,9 +1357,9 @@ async function handlePastePhone() {
       formattedPhone = '+' + digits;
     }
 
-    document.getElementById('appClientPhone').value = formattedPhone;
+    const phoneField = document.getElementById('appClientPhone');
+    if (phoneField) phoneField.value = formattedPhone;
 
-    // Check if this phone number exists in our clients database
     const matchedClient = state.clients.find(c => {
       if (!c.phone) return false;
       const cDigits = c.phone.replace(/\D/g, '');
@@ -3900,20 +1367,630 @@ async function handlePastePhone() {
     });
 
     if (matchedClient) {
-      document.getElementById('appClientName').value = matchedClient.name;
-      if (matchedClient.notes && !document.getElementById('appNotes').value) {
-        document.getElementById('appNotes').value = matchedClient.notes;
+      const nameEl = document.getElementById('appClientName');
+      if (nameEl) nameEl.value = matchedClient.name;
+      const notesEl = document.getElementById('appNotes');
+      if (matchedClient.notes && notesEl && !notesEl.value) {
+        notesEl.value = matchedClient.notes;
       }
       showToast(`Клиент найден: ${matchedClient.name}!`);
     } else {
       showToast('Номер вставлен из буфера');
-      document.getElementById('appClientName').focus();
+      const nameEl = document.getElementById('appClientName');
+      if (nameEl) nameEl.focus();
     }
   } catch (err) {
     const manual = prompt('Вставьте номер телефона из буфера:');
     if (manual) {
-      document.getElementById('appClientPhone').value = manual.trim();
+      const phoneField = document.getElementById('appClientPhone');
+      if (phoneField) phoneField.value = manual.trim();
       showToast('Номер добавлен');
     }
   }
+}
+
+// ================= NAVIGATION & TABS =================
+export function switchTab(tabId, shouldScroll = true) {
+  const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
+  if (!validTabs.includes(tabId)) return;
+
+  if (state.activeTab && state.activeTab !== tabId) {
+    sessionStorage.setItem('hairstudio_scroll_' + state.activeTab, String(window.scrollY));
+  }
+
+  state.activeTab = tabId;
+  localStorage.setItem('hairstudio_active_tab', tabId);
+
+  if (window.location.hash !== '#' + tabId) {
+    history.replaceState(null, '', '#' + tabId);
+  }
+
+  document.querySelectorAll('.nav-item').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
+  });
+  document.querySelectorAll('.tab-screen').forEach(s => {
+    s.classList.toggle('active', s.id === `tab-${tabId}`);
+  });
+
+  if (tabId === 'schedule') renderSchedule();
+  else if (tabId === 'clients') renderClients();
+  else if (tabId === 'services') renderServices();
+  else if (tabId === 'expenses') renderExpenses();
+  else if (tabId === 'finance') renderFinance();
+
+  if (shouldScroll) {
+    const savedScroll = sessionStorage.getItem('hairstudio_scroll_' + tabId);
+    if (savedScroll !== null) {
+      window.scrollTo({ top: Number(savedScroll), behavior: 'instant' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+}
+
+function restoreActiveTabAndScroll() {
+  if (history.state && history.state.modalOpen) {
+    history.replaceState(null, '', window.location.href);
+  }
+  const hashTab = window.location.hash.replace('#', '');
+  const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
+  const savedTab = (hashTab && validTabs.includes(hashTab))
+    ? hashTab
+    : (localStorage.getItem('hairstudio_active_tab') || 'schedule');
+
+  switchTab(savedTab, false);
+
+  const viewSelect = document.getElementById('scheduleViewSelect');
+  if (viewSelect && state.scheduleViewMode) {
+    viewSelect.value = state.scheduleViewMode;
+  }
+
+  const statusFilterSelect = document.getElementById('appointmentStatusFilter');
+  if (statusFilterSelect && state.scheduleFilter) {
+    statusFilterSelect.value = state.scheduleFilter;
+  }
+
+  if (state.financePeriod) {
+    document.querySelectorAll('#financePeriodSelector .period-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-period') === state.financePeriod);
+    });
+  }
+
+  if (state.serviceCategory) {
+    document.querySelectorAll('#serviceCategoryFilter .chip-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-category') === state.serviceCategory);
+    });
+  }
+
+  if (state.expenseCategory) {
+    document.querySelectorAll('#expenseCategoryFilter .chip-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-category') === state.expenseCategory);
+    });
+  }
+
+  const savedScroll = sessionStorage.getItem('hairstudio_scroll_' + savedTab);
+  if (savedScroll !== null) {
+    setTimeout(() => {
+      window.scrollTo({ top: Number(savedScroll), behavior: 'instant' });
+    }, 60);
+  }
+}
+
+// ================= DATA LOADING =================
+export async function reloadData() {
+  const [services, appointments, expenses, clients] = await Promise.all([
+    window.db.getServices(),
+    window.db.getAppointments(),
+    window.db.getExpenses(),
+    window.db.getClients()
+  ]);
+
+  state.services = services || [];
+  state.appointments = appointments || [];
+  state.expenses = expenses || [];
+  state.clients = clients || [];
+
+  rebuildIndices();
+
+  renderTodayBanner();
+  renderDateStripDots();
+
+  if (state.activeTab === 'schedule') {
+    renderSchedule();
+  } else if (state.activeTab === 'clients') {
+    renderClients();
+  } else if (state.activeTab === 'services') {
+    renderServices();
+  } else if (state.activeTab === 'expenses') {
+    renderExpenses();
+  } else if (state.activeTab === 'finance') {
+    renderFinance();
+  } else {
+    renderSchedule();
+  }
+}
+
+// ================= EVENT LISTENERS SETUP =================
+function setupEventListeners() {
+  setupModalSwipeGestures();
+
+  // Density switcher (Compact vs Comfortable)
+  const btnDensity = document.getElementById('btnDensityToggle');
+  if (btnDensity) {
+    btnDensity.addEventListener('click', () => {
+      state.cardDensity = state.cardDensity === 'compact' ? 'comfortable' : 'compact';
+      localStorage.setItem('hairstudio_card_density', state.cardDensity);
+      updateDensityToggleUI();
+      renderSchedule();
+      showToast(state.cardDensity === 'compact' ? '⚡ Компактный вид' : '📱 Подробный вид');
+    });
+  }
+
+  // Navigation tab switching
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-tab');
+      switchTab(tab);
+    });
+  });
+
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '');
+    const validTabs = ['schedule', 'clients', 'services', 'expenses', 'finance'];
+    if (hash && hash !== state.activeTab && validTabs.includes(hash)) {
+      switchTab(hash, false);
+    }
+  });
+
+  // Schedule Toolbar listeners
+  const statusFilterSelect = document.getElementById('appointmentStatusFilter');
+  if (statusFilterSelect) {
+    statusFilterSelect.addEventListener('change', (e) => {
+      state.scheduleFilter = e.target.value;
+      safeStorage.set('hairstudio_schedule_filter', state.scheduleFilter);
+      renderSchedule();
+    });
+  }
+
+  const viewSelect = document.getElementById('scheduleViewSelect');
+  if (viewSelect) {
+    viewSelect.addEventListener('change', (e) => {
+      state.scheduleViewMode = e.target.value;
+      localStorage.setItem('hairstudio_schedule_view', state.scheduleViewMode);
+      renderSchedule();
+    });
+  }
+
+  // Date Navigation buttons
+  const btnToday = document.getElementById('btnToday');
+  if (btnToday) {
+    btnToday.addEventListener('click', () => {
+      state.selectedDate = formatDateToYMD(new Date());
+      setupDateStrip();
+      renderSchedule();
+    });
+  }
+
+  const btnPrevDay = document.getElementById('btnPrevDay');
+  if (btnPrevDay) {
+    btnPrevDay.addEventListener('click', () => {
+      const d = parseYMD(state.selectedDate);
+      d.setDate(d.getDate() - 1);
+      state.selectedDate = formatDateToYMD(d);
+      setupDateStrip();
+      renderSchedule();
+    });
+  }
+
+  const btnNextDay = document.getElementById('btnNextDay');
+  if (btnNextDay) {
+    btnNextDay.addEventListener('click', () => {
+      const d = parseYMD(state.selectedDate);
+      d.setDate(d.getDate() + 1);
+      state.selectedDate = formatDateToYMD(d);
+      setupDateStrip();
+      renderSchedule();
+    });
+  }
+
+  const dateInput = document.getElementById('scheduleDateInput');
+  if (dateInput) {
+    dateInput.addEventListener('change', (e) => {
+      if (e.target.value) {
+        state.selectedDate = e.target.value;
+        setupDateStrip();
+        renderSchedule();
+      }
+    });
+  }
+
+  // Date Strip click delegation
+  const strip = document.getElementById('dateStrip');
+  if (strip) {
+    strip.addEventListener('click', (e) => {
+      const card = e.target.closest('.date-card');
+      if (card && card.dataset.date) {
+        state.selectedDate = card.dataset.date;
+        strip.querySelectorAll('.date-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        updateDateNavLabel();
+        renderSchedule();
+      }
+    });
+  }
+
+  // Clients Search
+  const searchClients = document.getElementById('searchClientsInput');
+  if (searchClients) {
+    searchClients.addEventListener('input', (e) => {
+      renderClients(e.target.value.trim());
+    });
+  }
+
+  // Category Filters
+  const serviceCatBox = document.getElementById('serviceCategoryFilter');
+  if (serviceCatBox) {
+    serviceCatBox.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip-btn');
+      if (!btn) return;
+      serviceCatBox.querySelectorAll('.chip-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.serviceCategory = btn.getAttribute('data-category');
+      localStorage.setItem('hairstudio_service_category', state.serviceCategory);
+      renderServices();
+    });
+  }
+
+  const expCatBox = document.getElementById('expenseCategoryFilter');
+  if (expCatBox) {
+    expCatBox.addEventListener('click', (e) => {
+      const btn = e.target.closest('.chip-btn');
+      if (!btn) return;
+      expCatBox.querySelectorAll('.chip-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.expenseCategory = btn.getAttribute('data-category');
+      localStorage.setItem('hairstudio_expense_category', state.expenseCategory);
+      renderExpenses();
+    });
+  }
+
+  const finPeriodBox = document.getElementById('financePeriodSelector');
+  if (finPeriodBox) {
+    finPeriodBox.addEventListener('click', (e) => {
+      const btn = e.target.closest('.period-btn');
+      if (!btn) return;
+      finPeriodBox.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.financePeriod = btn.getAttribute('data-period');
+      localStorage.setItem('hairstudio_finance_period', state.financePeriod);
+      renderFinance();
+    });
+  }
+
+  // Add Item Buttons
+  const btnAddApp = document.getElementById('btnAddAppointment');
+  if (btnAddApp) btnAddApp.addEventListener('click', () => openAppointmentModal());
+
+  const btnAddServ = document.getElementById('btnAddService');
+  if (btnAddServ) btnAddServ.addEventListener('click', () => openServiceModal());
+
+  const btnAddExp = document.getElementById('btnAddExpense');
+  if (btnAddExp) btnAddExp.addEventListener('click', () => openExpenseModal());
+
+  // Form Submissions
+  const formApp = document.getElementById('formAppointment');
+  if (formApp) formApp.addEventListener('submit', (e) => handleAppointmentSubmit(e, reloadData));
+
+  const btnDelApp = document.getElementById('btnDeleteAppointment');
+  if (btnDelApp) btnDelApp.addEventListener('click', () => handleAppointmentDelete(reloadData));
+
+  const formServ = document.getElementById('formService');
+  if (formServ) formServ.addEventListener('submit', (e) => handleServiceSubmit(e, reloadData));
+
+  const btnDelServ = document.getElementById('btnDeleteService');
+  if (btnDelServ) btnDelServ.addEventListener('click', () => handleServiceDelete(reloadData));
+
+  const formExp = document.getElementById('formExpense');
+  if (formExp) formExp.addEventListener('submit', (e) => handleExpenseSubmit(e, reloadData));
+
+  const btnDelExp = document.getElementById('btnDeleteExpense');
+  if (btnDelExp) btnDelExp.addEventListener('click', () => handleExpenseDelete(reloadData));
+
+  const btnSaveNotes = document.getElementById('btnSaveClientNotes');
+  if (btnSaveNotes) btnSaveNotes.addEventListener('click', () => handleSaveClientNotes(reloadData));
+
+  const btnDelClient = document.getElementById('btnDeleteClient');
+  if (btnDelClient) btnDelClient.addEventListener('click', () => handleDeleteClient(reloadData));
+
+  // Appointment Modal Helpers
+  const btnClientExisting = document.getElementById('btnClientModeExisting');
+  if (btnClientExisting) btnClientExisting.addEventListener('click', () => setClientMode('existing'));
+
+  const btnClientNew = document.getElementById('btnClientModeNew');
+  if (btnClientNew) btnClientNew.addEventListener('click', () => setClientMode('new'));
+
+  const selectExistingClient = document.getElementById('appExistingClientSelect');
+  if (selectExistingClient) selectExistingClient.addEventListener('change', updateClientSelectionFromDropdown);
+
+  const btnCopyFormula = document.getElementById('btnCopyClientFormula');
+  if (btnCopyFormula) btnCopyFormula.addEventListener('click', copyClientFormulaToNotes);
+
+  const btnPastePhone = document.getElementById('btnPastePhone');
+  if (btnPastePhone) btnPastePhone.addEventListener('click', handlePastePhone);
+
+  const btnChanPhone = document.getElementById('btnChannelPhone');
+  if (btnChanPhone) btnChanPhone.addEventListener('click', () => setChannelMode('phone'));
+
+  const btnChanWa = document.getElementById('btnChannelWhatsapp');
+  if (btnChanWa) btnChanWa.addEventListener('click', () => setChannelMode('whatsapp'));
+
+  const appStart = document.getElementById('appStartTime');
+  if (appStart) appStart.addEventListener('change', recalcAppointmentForm);
+
+  // Backup & Restore
+  const btnExport = document.getElementById('btnExportBackup');
+  if (btnExport) btnExport.addEventListener('click', handleExportBackup);
+
+  const btnImport = document.getElementById('btnImportBackup');
+  if (btnImport) {
+    btnImport.addEventListener('click', () => {
+      const fileInput = document.getElementById('importFileInput');
+      if (fileInput) fileInput.click();
+    });
+  }
+  const importInput = document.getElementById('importFileInput');
+  if (importInput) importInput.addEventListener('change', handleImportBackup);
+
+  const btnReset = document.getElementById('btnResetDemo');
+  if (btnReset) btnReset.addEventListener('click', handleResetDemo);
+
+  const btnMakeBackup = document.getElementById('btnMakeAutoBackupNow');
+  if (btnMakeBackup) {
+    btnMakeBackup.addEventListener('click', async () => {
+      btnMakeBackup.disabled = true;
+      await createAutoBackup(false);
+      btnMakeBackup.disabled = false;
+    });
+  }
+
+  const btnRestoreAuto = document.getElementById('btnRestoreAutoBackup');
+  if (btnRestoreAuto) btnRestoreAuto.addEventListener('click', restoreFromAutoBackup);
+
+  const intervalSelect = document.getElementById('settingAutoBackupInterval');
+  if (intervalSelect) {
+    intervalSelect.addEventListener('change', (e) => {
+      safeStorage.set('hairstudio_autobackup_interval', e.target.value);
+      showToast('Периодичность автокопирования сохранена');
+      checkAndRunAutoBackup();
+    });
+  }
+
+  // Studio Name & Themes
+  const btnSaveName = document.getElementById('btnSaveStudioName');
+  if (btnSaveName) btnSaveName.addEventListener('click', handleSaveStudioName);
+
+  const inputStudioName = document.getElementById('settingStudioName');
+  if (inputStudioName) {
+    inputStudioName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSaveStudioName();
+      }
+    });
+  }
+
+  const btnThemeToggle = document.getElementById('btnThemeToggle');
+  if (btnThemeToggle) btnThemeToggle.addEventListener('click', toggleTheme);
+
+  const btnThemeDark = document.getElementById('btnThemeDark');
+  if (btnThemeDark) btnThemeDark.addEventListener('click', () => applyTheme('dark'));
+
+  const btnThemeLight = document.getElementById('btnThemeLight');
+  if (btnThemeLight) btnThemeLight.addEventListener('click', () => applyTheme('light'));
+
+  // Working Hours
+  const selectWorkStart = document.getElementById('settingWorkStartHour');
+  if (selectWorkStart) {
+    selectWorkStart.addEventListener('change', (e) => {
+      const val = parseInt(e.target.value, 10);
+      state.workStartHour = val;
+      safeStorage.set('hairstudio_work_start_hour', String(val));
+      if (state.scheduleViewMode === 'timeline') renderSchedule();
+      showToast(`Начало дня: ${String(val).padStart(2, '0')}:00`);
+    });
+  }
+
+  const selectWorkEnd = document.getElementById('settingWorkEndHour');
+  if (selectWorkEnd) {
+    selectWorkEnd.addEventListener('change', (e) => {
+      const val = parseInt(e.target.value, 10);
+      state.workEndHour = val;
+      safeStorage.set('hairstudio_work_end_hour', String(val));
+      if (state.scheduleViewMode === 'timeline') renderSchedule();
+      showToast(`Конец дня: ${String(val).padStart(2, '0')}:00`);
+    });
+  }
+
+  // Header & Profile Buttons
+  const btnOpenSettings = document.getElementById('btnOpenSettings');
+  if (btnOpenSettings) btnOpenSettings.addEventListener('click', () => openModal('modalSettings'));
+
+  const btnAuthProfile = document.getElementById('btnAuthProfile');
+  if (btnAuthProfile) btnAuthProfile.addEventListener('click', () => openModal('modalAuth'));
+
+  const btnSettingsAuthAction = document.getElementById('btnSettingsAuthAction');
+  if (btnSettingsAuthAction) {
+    btnSettingsAuthAction.addEventListener('click', () => {
+      if (state.currentUser || state.currentMaster) {
+        handleSignOut();
+      } else {
+        openModal('modalAuth');
+      }
+    });
+  }
+
+  const btnOnlineBookings = document.getElementById('btnOnlineBookings');
+  if (btnOnlineBookings) {
+    btnOnlineBookings.addEventListener('click', () => {
+      openModal('modalBookings');
+      renderBookingsList();
+      checkOnlineBookings(false);
+    });
+  }
+
+  const btnRefreshBookings = document.getElementById('btnRefreshBookings');
+  if (btnRefreshBookings) {
+    btnRefreshBookings.addEventListener('click', () => checkOnlineBookings(true));
+  }
+
+  // Online Booking Settings Buttons
+  const btnSaveOnline = document.getElementById('btnSaveOnlineSettings');
+  if (btnSaveOnline) btnSaveOnline.addEventListener('click', handleSaveOnlineBookingSettings);
+
+  const btnCopyBooking = document.getElementById('btnCopyBookingLink');
+  if (btnCopyBooking) btnCopyBooking.addEventListener('click', handleCopyBookingLink);
+
+  const btnOpenBooking = document.getElementById('btnOpenBookingLink');
+  if (btnOpenBooking) btnOpenBooking.addEventListener('click', handleOpenBookingLink);
+
+  const inputMasterSlug = document.getElementById('settingMasterSlug');
+  if (inputMasterSlug) inputMasterSlug.addEventListener('input', updateBookingLinkDisplay);
+
+  const btnAuthCopyLink = document.getElementById('btnAuthCopyLink');
+  if (btnAuthCopyLink) btnAuthCopyLink.addEventListener('click', handleCopyBookingLink);
+
+  const btnAuthOpenLink = document.getElementById('btnAuthOpenLink');
+  if (btnAuthOpenLink) btnAuthOpenLink.addEventListener('click', handleOpenBookingLink);
+
+  // Auth Modal Tabs & Forms
+  const btnAuthTabLogin = document.getElementById('btnAuthTabLogin');
+  const btnAuthTabRegister = document.getElementById('btnAuthTabRegister');
+  const formAuthLogin = document.getElementById('formAuthLogin');
+  const formAuthRegister = document.getElementById('formAuthRegister');
+
+  if (btnAuthTabLogin && btnAuthTabRegister) {
+    btnAuthTabLogin.addEventListener('click', () => {
+      btnAuthTabLogin.classList.add('active');
+      btnAuthTabRegister.classList.remove('active');
+      if (formAuthLogin) formAuthLogin.style.display = 'flex';
+      if (formAuthRegister) formAuthRegister.style.display = 'none';
+    });
+    btnAuthTabRegister.addEventListener('click', () => {
+      btnAuthTabRegister.classList.add('active');
+      btnAuthTabLogin.classList.remove('active');
+      if (formAuthLogin) formAuthLogin.style.display = 'none';
+      if (formAuthRegister) formAuthRegister.style.display = 'flex';
+    });
+  }
+
+  if (formAuthLogin) formAuthLogin.addEventListener('submit', handleSignIn);
+  if (formAuthRegister) formAuthRegister.addEventListener('submit', handleSignUp);
+
+  const btnAuthLogout = document.getElementById('btnAuthLogout');
+  if (btnAuthLogout) btnAuthLogout.addEventListener('click', handleSignOut);
+
+  const btnGuest = document.getElementById('btnContinueAsGuest');
+  if (btnGuest) btnGuest.addEventListener('click', () => closeModal('modalAuth'));
+
+  // Init Subscription payment modal listeners
+  initSubscriptionListeners();
+}
+
+// ================= SERVICE WORKER REGISTRATION =================
+function setupServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      reg.update().catch(() => {});
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('🔄 Новая версия приложения готова, перезагрузка...');
+              showToast('Приложение обновлено! Перезагрузка...', 'info');
+              setTimeout(() => window.location.reload(), 1200);
+            }
+          });
+        }
+      });
+    }).catch(err => {
+      console.log('SW registration error:', err);
+    });
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
+  }
+}
+
+// ================= APP INITIALIZATION =================
+function initApp() {
+  try {
+    setupEventListeners();
+    restoreSavedPreferences();
+    loadOnlineBookingSettings();
+  } catch (uiErr) {
+    console.warn('UI setup error:', uiErr);
+  }
+
+  (async () => {
+    try {
+      await window.db.init();
+
+      initMasterAuth().then(() => {
+        loadOnlineBookingSettings();
+      }).catch(console.warn);
+
+      await reloadData();
+      setupDateStrip();
+      setupServiceWorker();
+      restoreActiveTabAndScroll();
+
+      checkAndRunAutoBackup().catch(console.warn);
+      checkOnlineBookings(false).catch(console.warn);
+      triggerAutoSyncSlots().catch(console.warn);
+    } catch (err) {
+      console.error('Initialization error:', err);
+      showToast('Ошибка инициализации базы данных', 'error');
+    }
+  })();
+
+  // Periodic check of bookings every 60s
+  setInterval(() => checkOnlineBookings(false), 60000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkOnlineBookings(false);
+  });
+
+  window.addEventListener('hairstudio:new-booking', () => {
+    checkOnlineBookings(true);
+  });
+
+  window.addEventListener('online', () => {
+    console.log('📶 Интернет появился: запуск автоматической синхронизации...');
+    triggerAutoSyncSlots();
+    triggerSyncMasterServices();
+    checkOnlineBookings(false);
+  });
+}
+
+// Global debug exposure
+window.app = {
+  state,
+  reloadData,
+  openAppointmentModal,
+  openServiceModal,
+  openExpenseModal,
+  openClientDetailsModal,
+  openKaspiPayModal
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
 }

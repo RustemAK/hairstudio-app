@@ -685,7 +685,24 @@
 
     const targetId = masterId || mockStore.master.id;
 
-    // 1. Try secure RPC function (includes master_busy_slots + active booking_requests)
+    // 1. Try secure RPC function (get_occupied_slots or get_master_busy_intervals)
+    try {
+      const rpcEndpoint = `${config.url}/rest/v1/rpc/get_occupied_slots`;
+      const rpcRes = await fetch(rpcEndpoint, {
+        method: 'POST',
+        headers: getHeaders(false),
+        body: JSON.stringify({ p_master_id: targetId, p_date: dateStr })
+      });
+      if (rpcRes.ok) {
+        const rpcList = await rpcRes.json();
+        if (Array.isArray(rpcList)) {
+          return rpcList;
+        }
+      }
+    } catch (rpcErr) {
+      console.warn('RPC get_occupied_slots fallback:', rpcErr);
+    }
+
     try {
       const rpcEndpoint = `${config.url}/rest/v1/rpc/get_master_busy_intervals`;
       const rpcRes = await fetch(rpcEndpoint, {
@@ -699,9 +716,7 @@
           return rpcList;
         }
       }
-    } catch (rpcErr) {
-      console.warn('RPC get_master_busy_intervals fallback:', rpcErr);
-    }
+    } catch (rpcErr) {}
 
     // 2. Direct fallback on master_busy_slots table
     try {
@@ -787,6 +802,44 @@
       return { success: true, booking: mockItem, isMock: true };
     }
 
+    // 1. Try secure RPC create_public_booking
+    try {
+      const rpcEndpoint = `${config.url}/rest/v1/rpc/create_public_booking`;
+      const rpcRes = await fetch(rpcEndpoint, {
+        method: 'POST',
+        headers: {
+          'apikey': config.key,
+          'Authorization': `Bearer ${config.key}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          p_master_id: payload.master_id,
+          p_client_name: payload.client_name,
+          p_client_phone: payload.client_phone,
+          p_date: payload.date,
+          p_start_time: payload.start_time,
+          p_end_time: payload.end_time,
+          p_service_names: payload.service_names,
+          p_duration_min: payload.duration_min,
+          p_client_note: payload.client_note
+        })
+      });
+
+      if (rpcRes.ok) {
+        const data = await rpcRes.json();
+        if (data && data.success === false) {
+          throw new Error(data.error || 'Ошибка при создании заявки');
+        }
+        return { success: true, booking: payload, booking_id: data ? data.booking_id : null };
+      }
+    } catch (rpcErr) {
+      if (rpcErr.message && !rpcErr.message.includes('HTTP')) {
+        throw rpcErr;
+      }
+      console.warn('RPC create_public_booking fallback to table insert:', rpcErr);
+    }
+
+    // 2. Direct table fallback if RPC fails
     try {
       const endpoint = `${config.url}/rest/v1/booking_requests`;
       const res = await fetch(endpoint, {
@@ -951,10 +1004,27 @@
    */
 
   /**
-   * Admin: Fetch all masters
+   * Admin: Fetch all masters (via secure RPC admin_get_all_masters)
    */
   async function getAllMastersForAdmin() {
     if (!isConfigured()) return [mockStore.master];
+
+    // 1. Try secure RPC admin_get_all_masters
+    try {
+      const rpcEndpoint = `${config.url}/rest/v1/rpc/admin_get_all_masters`;
+      const rpcRes = await fetch(rpcEndpoint, {
+        method: 'POST',
+        headers: getHeaders(true)
+      });
+      if (rpcRes.ok) {
+        const data = await rpcRes.json();
+        if (data && Array.isArray(data.masters)) {
+          return data.masters;
+        }
+      }
+    } catch (rpcErr) {
+      console.warn('RPC admin_get_all_masters fallback:', rpcErr);
+    }
 
     try {
       const endpoint = `${config.url}/rest/v1/masters?select=*&order=created_at.desc`;
@@ -965,6 +1035,64 @@
     } catch (err) {
       console.error('getAllMastersForAdmin error:', err);
       return [];
+    }
+  }
+
+  /**
+   * Admin: Update Master Subscription (via RPC)
+   */
+  async function adminUpdateMasterSubscription(masterId, status, plan, endsAt, notes = '') {
+    if (!masterId) return { success: false, error: 'No masterId' };
+    if (!isConfigured()) return { success: true, isMock: true };
+
+    try {
+      const rpcEndpoint = `${config.url}/rest/v1/rpc/admin_update_subscription`;
+      const rpcRes = await fetch(rpcEndpoint, {
+        method: 'POST',
+        headers: getHeaders(true),
+        body: JSON.stringify({
+          p_master_id: masterId,
+          p_status: status,
+          p_plan: plan,
+          p_ends_at: endsAt,
+          p_notes: notes
+        })
+      });
+      if (rpcRes.ok) {
+        const data = await rpcRes.json();
+        return data || { success: true };
+      }
+      const errText = await rpcRes.text();
+      return { success: false, error: errText };
+    } catch (err) {
+      console.error('adminUpdateMasterSubscription error:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Admin: Delete Master Account (via RPC)
+   */
+  async function adminDeleteMaster(masterId) {
+    if (!masterId) return { success: false, error: 'No masterId' };
+    if (!isConfigured()) return { success: true, isMock: true };
+
+    try {
+      const rpcEndpoint = `${config.url}/rest/v1/rpc/admin_delete_master`;
+      const rpcRes = await fetch(rpcEndpoint, {
+        method: 'POST',
+        headers: getHeaders(true),
+        body: JSON.stringify({ p_master_id: masterId })
+      });
+      if (rpcRes.ok) {
+        const data = await rpcRes.json();
+        return data || { success: true };
+      }
+      const errText = await rpcRes.text();
+      return { success: false, error: errText };
+    } catch (err) {
+      console.error('adminDeleteMaster error:', err);
+      return { success: false, error: err.message };
     }
   }
 
@@ -1092,6 +1220,8 @@
     getAllMastersForAdmin,
     adminExtendSubscription,
     adminToggleMasterStatus,
+    adminUpdateMasterSubscription,
+    adminDeleteMaster,
     getSubscriptionPayments
   };
 });

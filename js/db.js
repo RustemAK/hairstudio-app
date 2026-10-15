@@ -6,7 +6,7 @@
 class HairStudioDB {
   constructor() {
     this.dbName = 'HairStudioDB';
-    this.dbVersion = 1;
+    this.dbVersion = 2;
     this.db = null;
   }
 
@@ -20,11 +20,18 @@ class HairStudioDB {
         const db = event.target.result;
 
         // Appointments store
+        let appStore;
         if (!db.objectStoreNames.contains('appointments')) {
-          const appStore = db.createObjectStore('appointments', { keyPath: 'id', autoIncrement: true });
+          appStore = db.createObjectStore('appointments', { keyPath: 'id', autoIncrement: true });
           appStore.createIndex('date', 'date', { unique: false });
           appStore.createIndex('clientName', 'clientName', { unique: false });
           appStore.createIndex('status', 'status', { unique: false });
+          appStore.createIndex('updated_at', 'updated_at', { unique: false });
+        } else {
+          appStore = request.transaction.objectStore('appointments');
+          if (!appStore.indexNames.contains('updated_at')) {
+            appStore.createIndex('updated_at', 'updated_at', { unique: false });
+          }
         }
 
         // Services store
@@ -45,6 +52,13 @@ class HairStudioDB {
           const clientStore = db.createObjectStore('clients', { keyPath: 'id', autoIncrement: true });
           clientStore.createIndex('name', 'name', { unique: false });
           clientStore.createIndex('phone', 'phone', { unique: false });
+        }
+
+        // Client notes CRM store
+        if (!db.objectStoreNames.contains('client_notes')) {
+          const notesStore = db.createObjectStore('client_notes', { keyPath: 'id', autoIncrement: true });
+          notesStore.createIndex('client_phone', 'client_phone', { unique: false });
+          notesStore.createIndex('updated_at', 'updated_at', { unique: false });
         }
       };
 
@@ -139,6 +153,7 @@ class HairStudioDB {
   }
 
   async addAppointment(appointment) {
+    appointment.updated_at = appointment.updated_at || new Date().toISOString();
     // Also save or update client
     if (appointment.clientName) {
       await this.saveClientIfNotExists({
@@ -151,11 +166,52 @@ class HairStudioDB {
   }
 
   async updateAppointment(appointment) {
+    appointment.updated_at = new Date().toISOString();
     return this._tx('appointments', 'readwrite', (store) => store.put(appointment));
   }
 
   async deleteAppointment(id) {
     return this._tx('appointments', 'readwrite', (store) => store.delete(Number(id)));
+  }
+
+  /**
+   * Last-Write-Wins appointment merge with cloud priority for pending bookings
+   */
+  async mergeAppointmentWithConflictCheck(incoming) {
+    if (!incoming || !incoming.date || !incoming.startTime) return { action: 'ignored' };
+    const existingList = await this.getAppointmentsByDate(incoming.date);
+
+    // Find matching local appointment (by booking_id or clientPhone+startTime)
+    const existing = existingList.find(a => 
+      (incoming.booking_id && a.booking_id === incoming.booking_id) ||
+      (a.startTime === incoming.startTime && a.clientPhone === incoming.clientPhone)
+    );
+
+    const nowIso = new Date().toISOString();
+    incoming.updated_at = incoming.updated_at || nowIso;
+
+    if (!existing) {
+      const addedId = await this.addAppointment(incoming);
+      return { action: 'added', id: addedId };
+    }
+
+    // Cloud pending/new bookings always take precedence over offline cache
+    if (incoming.status === 'pending' || incoming.status === 'new') {
+      incoming.id = existing.id;
+      await this.updateAppointment(incoming);
+      return { action: 'updated_cloud_priority', id: existing.id };
+    }
+
+    // Last-Write-Wins comparison
+    const incomingTime = new Date(incoming.updated_at).getTime() || 0;
+    const existingTime = new Date(existing.updated_at || existing.createdAt || 0).getTime() || 0;
+
+    if (incomingTime >= existingTime) {
+      incoming.id = existing.id;
+      await this.updateAppointment(incoming);
+      return { action: 'updated_lww', id: existing.id };
+    }
+    return { action: 'kept_local', id: existing.id };
   }
 
   // ================= CLIENTS =================
