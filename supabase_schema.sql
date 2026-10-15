@@ -318,6 +318,11 @@ DECLARE
     v_new_end TIMESTAMPTZ;
     v_base_date TIMESTAMPTZ;
 BEGIN
+    -- 1. СТРОГАЯ ПРОВЕРКА: только супер-администратор может продлевать подписки
+    IF NOT EXISTS (SELECT 1 FROM public.masters WHERE user_id = auth.uid() AND is_admin = TRUE) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Отказано в доступе: требуются права администратора платформы');
+    END IF;
+
     SELECT * INTO v_master FROM public.masters WHERE id = p_master_id;
     IF NOT FOUND THEN
         RETURN jsonb_build_object('success', false, 'error', 'Мастер не найден');
@@ -362,5 +367,37 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.admin_extend_subscription(UUID, INT, INT, TEXT, TEXT) TO authenticated, anon;
+-- Доступ только авторизованным пользователям
+REVOKE EXECUTE ON FUNCTION public.admin_extend_subscription(UUID, INT, INT, TEXT, TEXT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.admin_extend_subscription(UUID, INT, INT, TEXT, TEXT) TO authenticated;
+
+-- ЗАЩИТНЫЙ ТРИГГЕР: Запрет эскалации прав и самовольного изменения подписки
+CREATE OR REPLACE FUNCTION public.protect_master_sensitive_fields()
+RETURNS trigger AS $$
+DECLARE
+    v_is_caller_admin BOOLEAN := FALSE;
+BEGIN
+    SELECT is_admin INTO v_is_caller_admin
+    FROM public.masters
+    WHERE user_id = auth.uid();
+
+    IF v_is_caller_admin IS NOT TRUE THEN
+        NEW.is_admin := OLD.is_admin;
+        NEW.subscription_status := OLD.subscription_status;
+        NEW.subscription_plan := OLD.subscription_plan;
+        NEW.trial_ends_at := OLD.trial_ends_at;
+        NEW.subscription_ends_at := OLD.subscription_ends_at;
+        NEW.subscription_notes := OLD.subscription_notes;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_protect_master_fields ON public.masters;
+CREATE TRIGGER trigger_protect_master_fields
+    BEFORE UPDATE ON public.masters
+    FOR EACH ROW
+    EXECUTE FUNCTION public.protect_master_sensitive_fields();
+
 

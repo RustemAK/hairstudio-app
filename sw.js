@@ -1,5 +1,5 @@
 // HairStudio PWA Service Worker
-const CACHE_NAME = 'hairstudio-cache-v29';
+const CACHE_NAME = 'hairstudio-cache-v30';
 // NOTE: HTML references files with ?v= query strings for browser cache busting.
 // The fetch handler uses network-first and auto-updates the SW cache on success.
 const ASSETS_TO_CACHE = [
@@ -8,6 +8,8 @@ const ASSETS_TO_CACHE = [
   './book.html',
   './admin.html',
   './css/style.css',
+  './css/book.css',
+  './css/admin.css',
   './js/app.js',
   './js/db.js',
   './js/supabase-sync.js',
@@ -45,13 +47,16 @@ self.addEventListener('fetch', (event) => {
   // Only cache same-origin requests; skip Supabase API and external services
   if (!event.request.url.startsWith(self.location.origin)) return;
 
-  // Navigation requests: Network first, fallback to cached index.html or book.html
+  // Navigation requests: Network first, fallback to corresponding cached HTML page
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .catch(() => {
           if (event.request.url.includes('book.html')) {
             return caches.match('./book.html');
+          }
+          if (event.request.url.includes('admin.html')) {
+            return caches.match('./admin.html');
           }
           return caches.match('./index.html');
         })
