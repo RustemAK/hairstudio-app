@@ -187,6 +187,12 @@ export function createAppointmentCard(app) {
     `;
   }
 
+  card.style.cursor = 'pointer';
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('a') || e.target.closest('button')) return;
+    openAppointmentModal(app);
+  });
+
   return card;
 }
 
@@ -194,6 +200,36 @@ export function renderSchedule() {
   const container = document.getElementById('appointmentsList');
   if (!container) return;
   container.innerHTML = '';
+
+  if (!container._hasScheduleClickListener) {
+    container._hasScheduleClickListener = true;
+    container.addEventListener('click', (e) => {
+      const slotBtn = e.target.closest('.btn-timeline-add-slot');
+      if (slotBtn) {
+        const hour = slotBtn.getAttribute('data-hour');
+        openAppointmentModal(null, null, hour);
+        return;
+      }
+      const expandBtn = e.target.closest('.btn-timeline-expand');
+      if (expandBtn) {
+        const dir = expandBtn.getAttribute('data-direction');
+        const target = parseInt(expandBtn.getAttribute('data-target-hour'), 10);
+        if (dir === 'earlier') {
+          state.workStartHour = target;
+        } else {
+          state.workEndHour = target;
+        }
+        renderSchedule();
+        return;
+      }
+      const card = e.target.closest('.appointment-card');
+      if (card && !e.target.closest('a') && !e.target.closest('button')) {
+        const appId = card.dataset.appId;
+        const app = state.appointments.find(a => String(a.id) === String(appId));
+        if (app) openAppointmentModal(app);
+      }
+    });
+  }
 
   let dayApps = state.appointments.filter(a => a.date === state.selectedDate);
 
@@ -361,6 +397,21 @@ export function openAppointmentModal(app = null, preselectedClient = null, defau
       });
       addServiceSelect.appendChild(optgroup);
     });
+
+    if (!addServiceSelect._hasChangeListener) {
+      addServiceSelect._hasChangeListener = true;
+      addServiceSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (!val) return;
+        const s = state.services.find(srv => String(srv.id) === String(val));
+        if (s) {
+          state.selectedServicesForAppointment.add(s.id);
+          renderSelectedServicesInModal();
+          recalcAppointmentForm();
+        }
+        e.target.value = '';
+      });
+    }
   }
 
   if (app && app.services) {
@@ -431,12 +482,12 @@ export function openAppointmentModal(app = null, preselectedClient = null, defau
 }
 
 export function renderSelectedServicesInModal() {
-  const container = document.getElementById('appSelectedServicesChips');
+  const container = document.getElementById('appSelectedServicesChips') || document.getElementById('appSelectedServicesContainer');
   if (!container) return;
   container.innerHTML = '';
 
   state.selectedServicesForAppointment.forEach(id => {
-    const s = state.services.find(srv => srv.id === id);
+    const s = state.services.find(srv => String(srv.id) === String(id));
     if (!s) return;
     const chip = document.createElement('div');
     chip.className = 'chip active';
@@ -459,7 +510,7 @@ export function recalcAppointmentForm() {
   let totalDuration = 0;
 
   state.selectedServicesForAppointment.forEach(id => {
-    const s = state.services.find(item => item.id === id);
+    const s = state.services.find(item => String(item.id) === String(id));
     if (s) {
       totalPrice += Number(s.price) || 0;
       totalDuration += Number(s.duration) || 60;
@@ -484,7 +535,7 @@ export async function handleAppointmentSubmit(e, onDataChanged) {
   try {
     const selectedServices = [];
     state.selectedServicesForAppointment.forEach(id => {
-      const s = state.services.find(item => item.id === id);
+      const s = state.services.find(item => String(item.id) === String(id));
       if (s) {
         selectedServices.push({
           name: s.name,
@@ -504,8 +555,8 @@ export async function handleAppointmentSubmit(e, onDataChanged) {
 
     if (state.appointmentClientMode === 'existing') {
       const select = document.getElementById('appExistingClientSelect');
-      const selectedId = Number(select.value);
-      const client = state.clients.find(c => c.id === selectedId);
+      const selectedId = select ? select.value : '';
+      const client = state.clients.find(c => String(c.id) === String(selectedId));
       if (!client) {
         showToast('Пожалуйста, выберите клиента из списка или переключитесь на «Новый клиент»', 'error');
         return;
@@ -521,6 +572,7 @@ export async function handleAppointmentSubmit(e, onDataChanged) {
         return;
       }
     }
+
 
     const appDate = document.getElementById('appDate').value;
     const startTime = document.getElementById('appStartTime').value;

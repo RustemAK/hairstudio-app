@@ -71,11 +71,13 @@
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
       const expiresIn = params.get('expires_in');
+      const type = params.get('type');
       if (accessToken) {
         const session = {
           access_token: accessToken,
           refresh_token: refreshToken || '',
-          expires_at: expiresIn ? (Math.floor(Date.now() / 1000) + Number(expiresIn)) : null
+          expires_at: expiresIn ? (Math.floor(Date.now() / 1000) + Number(expiresIn)) : null,
+          type: type || 'token'
         };
         saveStoredSession(session);
         try {
@@ -180,6 +182,42 @@
   // ================= AUTH METHODS (SUPABASE GOTRUE) =================
 
   /**
+   * Translate English GoTrue / Supabase errors to clear Russian user messages
+   */
+  function translateAuthError(err) {
+    if (!err) return 'Неизвестная ошибка авторизации';
+    const s = String(err).toLowerCase();
+    if (s.includes('invalid login credentials') || s.includes('invalid_credentials') || s.includes('invalid_grant')) {
+      return 'Неверный email или пароль. Пожалуйста, проверьте данные или воспользуйтесь сбросом пароля.';
+    }
+    if (s.includes('user not found')) {
+      return 'Пользователь с таким email не найден. Проверьте адрес или зарегистрируйтесь.';
+    }
+    if (s.includes('email not confirmed')) {
+      return 'Email не подтверждён. Пожалуйста, проверьте почту и перейдите по ссылке подтверждения.';
+    }
+    if (s.includes('at least 6 characters') || s.includes('password should be')) {
+      return 'Пароль должен содержать не менее 6 символов.';
+    }
+    if (s.includes('already registered') || s.includes('user already exists')) {
+      return 'Мастер с таким email уже зарегистрирован. Нажмите «Войти» или восстановите пароль.';
+    }
+    if (s.includes('60 seconds') || s.includes('rate limit') || s.includes('too many requests') || s.includes('over_email_send_rate_limit')) {
+      return 'Слишком много попыток. В целях безопасности подождите 1 минуту перед следующим запросом.';
+    }
+    if (s.includes('failed to fetch') || s.includes('network') || s.includes('load failed')) {
+      return 'Ошибка сети. Проверьте интернет-соединение.';
+    }
+    if (s.includes('invalid format') || s.includes('validate email')) {
+      return 'Некорректный формат адреса электронной почты.';
+    }
+    if (s.includes('different from the old')) {
+      return 'Новый пароль должен отличаться от старого.';
+    }
+    return String(err);
+  }
+
+  /**
    * Register a new Master Account
    */
   async function signUpMaster(data) {
@@ -213,7 +251,8 @@
 
       const result = await res.json();
       if (!res.ok) {
-        return { ok: false, error: result.error_description || result.msg || result.message || 'Ошибка регистрации' };
+        const rawErr = result.error_description || result.msg || result.message || 'Ошибка регистрации';
+        return { ok: false, error: translateAuthError(rawErr) };
       }
 
       const user = result.user || result;
@@ -261,7 +300,7 @@
 
       return { ok: true, user, session, needsConfirm: !session };
     } catch (err) {
-      return { ok: false, error: err.message || 'Сетевая ошибка' };
+      return { ok: false, error: translateAuthError(err.message || 'Сетевая ошибка') };
     }
   }
 
@@ -310,7 +349,8 @@
 
       const session = await res.json();
       if (!res.ok) {
-        return { ok: false, error: session.error_description || session.msg || session.message || 'Неверный логин или пароль' };
+        const rawErr = session.error_description || session.msg || session.message || session.error || 'Неверный логин или пароль';
+        return { ok: false, error: translateAuthError(rawErr) };
       }
 
       saveStoredSession(session);
@@ -328,7 +368,86 @@
 
       return { ok: true, user, session, master };
     } catch (err) {
-      return { ok: false, error: err.message || 'Ошибка авторизации' };
+      return { ok: false, error: translateAuthError(err.message || 'Ошибка авторизации') };
+    }
+  }
+
+  /**
+   * Request Password Reset Email (Supabase GoTrue)
+   */
+  async function resetMasterPassword(email) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      return { ok: false, error: 'Укажите Email для восстановления пароля' };
+    }
+
+    if (!isConfigured()) {
+      return { ok: false, error: 'База данных Supabase не настроена' };
+    }
+
+    try {
+      const redirectUrl = (typeof window !== 'undefined' && window.location.origin)
+        ? `${window.location.origin}${window.location.pathname}`
+        : '';
+      const endpoint = `${config.url}/auth/v1/recover${redirectUrl ? `?redirect_to=${encodeURIComponent(redirectUrl)}` : ''}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: getHeaders(false),
+        body: JSON.stringify({ email: cleanEmail })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const rawErr = data.error_description || data.msg || data.message || 'Ошибка сброса пароля';
+        return { ok: false, error: translateAuthError(rawErr) };
+      }
+
+      return {
+        ok: true,
+        message: `Инструкция и ссылка для создания нового пароля отправлены на ${cleanEmail}. Проверьте папку «Входящие» или «Спам».`
+      };
+    } catch (err) {
+      return { ok: false, error: translateAuthError(err.message || 'Сетевая ошибка при сбросе пароля') };
+    }
+  }
+
+  /**
+   * Update Master Password with current token or recovery session
+   */
+  async function updateMasterPassword(newPassword) {
+    const cleanPassword = String(newPassword || '').trim();
+    if (!cleanPassword || cleanPassword.length < 6) {
+      return { ok: false, error: 'Пароль должен содержать не менее 6 символов' };
+    }
+
+    const session = getStoredSession();
+    if (!session || !session.access_token) {
+      return { ok: false, error: 'Сессия сброса истекла или недействительна. Запросите сброс заново.' };
+    }
+
+    try {
+      const endpoint = `${config.url}/auth/v1/user`;
+      const res = await fetch(endpoint, {
+        method: 'PUT',
+        headers: getHeaders(true),
+        body: JSON.stringify({ password: cleanPassword })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const rawErr = data.error_description || data.msg || data.message || 'Не удалось обновить пароль';
+        return { ok: false, error: translateAuthError(rawErr) };
+      }
+
+      // If update succeeded, clear the recovery type
+      if (session && session.type === 'recovery') {
+        session.type = 'token';
+        saveStoredSession(session);
+      }
+
+      return { ok: true, message: 'Пароль успешно обновлён!' };
+    } catch (err) {
+      return { ok: false, error: translateAuthError(err.message || 'Сетевая ошибка при обновлении пароля') };
     }
   }
 
@@ -1206,6 +1325,9 @@
     signUpMaster,
     signInMaster,
     signOutMaster,
+    resetMasterPassword,
+    updateMasterPassword,
+    translateAuthError,
     getSession,
     getMasterByUserId,
     getMaster,

@@ -143,10 +143,26 @@ export function renderExpenses() {
     return;
   }
 
+  if (!container._hasItemClickListener) {
+    container._hasItemClickListener = true;
+    container.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.btn-edit-exp');
+      const card = e.target.closest('.data-item-card');
+      if (editBtn || card) {
+        const id = editBtn ? editBtn.dataset.id : card.querySelector('.btn-edit-exp')?.dataset.id;
+        if (id) {
+          const exp = state.expenses.find(item => String(item.id) === String(id));
+          if (exp) openExpenseModal(exp);
+        }
+      }
+    });
+  }
+
   const fragment = document.createDocumentFragment();
   list.forEach(exp => {
     const card = document.createElement('div');
     card.className = 'data-item-card';
+    card.style.cursor = 'pointer';
     card.innerHTML = `
       <div class="item-left">
         <div class="item-title">${escapeHtml(exp.title)}</div>

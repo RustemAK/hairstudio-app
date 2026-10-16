@@ -121,7 +121,7 @@ export function closeModal(modalId, syncHistory = true) {
   if (!modal) return;
 
   modal.classList.remove('active');
-  modal.style.display = '';
+  modal.style.display = 'none';
   modal.style.opacity = '';
   modal.style.pointerEvents = '';
   const sheet = modal.querySelector('.modal-sheet');
@@ -313,11 +313,38 @@ export function renderTodayBanner() {
   if (bannerRevEl) bannerRevEl.innerText = `${revenue.toLocaleString('ru-RU')} ₸`;
 }
 
+export function showRecoveryNewPasswordForm() {
+  const formLogin = document.getElementById('formAuthLogin');
+  const formRegister = document.getElementById('formAuthRegister');
+  const formReset = document.getElementById('formAuthReset');
+  const formNewPass = document.getElementById('formAuthNewPassword');
+  const toggle = document.getElementById('authModeToggle');
+  const testBox = document.getElementById('authFastTestBox');
+  const modalTitle = document.getElementById('authModalTitle');
+
+  if (formLogin) formLogin.style.display = 'none';
+  if (formRegister) formRegister.style.display = 'none';
+  if (formReset) formReset.style.display = 'none';
+  if (toggle) toggle.style.display = 'none';
+  if (testBox) testBox.style.display = 'none';
+  if (formNewPass) formNewPass.style.display = 'flex';
+  if (modalTitle) modalTitle.innerText = '🔐 Задайте новый пароль';
+}
+
 // ================= MASTER AUTHENTICATION CONTROLLER =================
 export async function initMasterAuth() {
   if (!window.HairSupabase) return;
   try {
     const authState = await window.HairSupabase.getSession();
+
+    // Check if user came from a password recovery link
+    if (authState && authState.session && authState.session.type === 'recovery') {
+      state.authSession = authState.session;
+      showRecoveryNewPasswordForm();
+      openModal('modalAuth');
+      return;
+    }
+
     if (authState && authState.authenticated) {
       state.authSession = authState.session;
       state.currentUser = authState.user;
@@ -346,10 +373,36 @@ export async function initMasterAuth() {
       }
       updateAuthUI(true);
     } else {
+      const localMasterRaw = safeStorage.get('hairstudio_master_local_profile');
+      if (localMasterRaw) {
+        try {
+          const localMaster = JSON.parse(localMasterRaw);
+          if (localMaster && localMaster.slug) {
+            state.currentMaster = localMaster;
+            state.currentUser = { id: localMaster.user_id, email: localMaster.email || 'master@example.com' };
+            loadStudioName();
+            updateAuthUI(true);
+            return;
+          }
+        } catch (e) {}
+      }
       updateAuthUI(false);
     }
   } catch (err) {
     console.warn('initMasterAuth error:', err);
+    const localMasterRaw = safeStorage.get('hairstudio_master_local_profile');
+    if (localMasterRaw) {
+      try {
+        const localMaster = JSON.parse(localMasterRaw);
+        if (localMaster && localMaster.slug) {
+          state.currentMaster = localMaster;
+          state.currentUser = { id: localMaster.user_id, email: localMaster.email || 'master@example.com' };
+          loadStudioName();
+          updateAuthUI(true);
+          return;
+        }
+      } catch (e) {}
+    }
     updateAuthUI(false);
   }
 }
@@ -435,16 +488,44 @@ export function updateAuthUI(isLoggedIn) {
 }
 
 export async function handleSignIn(e) {
-  if (e) e.preventDefault();
+  if (e) {
+    e.preventDefault();
+    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+  }
   const emailInput = document.getElementById('loginEmail');
   const passInput = document.getElementById('loginPassword');
   const btnSubmit = document.getElementById('btnSubmitLogin');
+  const errorAlert = document.getElementById('loginErrorAlert');
+  const errorText = document.getElementById('loginErrorAlertText');
+
+  // Reset error states
+  if (errorAlert) errorAlert.style.display = 'none';
+  if (emailInput) {
+    emailInput.classList.remove('input-error');
+    emailInput.style.borderColor = '';
+  }
+  if (passInput) {
+    passInput.classList.remove('input-error');
+    passInput.style.borderColor = '';
+  }
 
   const email = emailInput ? emailInput.value.trim() : '';
   const password = passInput ? passInput.value.trim() : '';
 
   if (!email || !password) {
-    showToast('Введите email и пароль', 'error');
+    const msg = 'Пожалуйста, укажите email и пароль';
+    if (errorAlert && errorText) {
+      errorText.innerText = msg;
+      errorAlert.style.display = 'flex';
+    }
+    if (!email && emailInput) {
+      emailInput.classList.add('input-error');
+      emailInput.focus();
+    } else if (!password && passInput) {
+      passInput.classList.add('input-error');
+      passInput.focus();
+    }
+    showToast(msg, 'error');
     return;
   }
 
@@ -456,7 +537,17 @@ export async function handleSignIn(e) {
   try {
     const res = await window.HairSupabase.signInMaster(email, password);
     if (!res.ok) {
-      showToast(res.error || 'Ошибка входа', 'error');
+      const errMsg = res.error || 'Неверный email или пароль';
+      if (errorAlert && errorText) {
+        errorText.innerText = errMsg;
+        errorAlert.style.display = 'flex';
+      }
+      if (passInput) {
+        passInput.classList.add('input-error');
+        passInput.focus();
+      }
+      showToast(errMsg, 'error');
+      // Crucial: Keep modal open! Never close modal on error!
       return;
     }
 
@@ -480,7 +571,12 @@ export async function handleSignIn(e) {
     await checkOnlineBookings(false);
     triggerAutoSyncSlots();
   } catch (err) {
-    showToast(`Ошибка входа: ${err.message}`, 'error');
+    const errMsg = `Ошибка авторизации: ${err.message || 'Сбой подключения'}`;
+    if (errorAlert && errorText) {
+      errorText.innerText = errMsg;
+      errorAlert.style.display = 'flex';
+    }
+    showToast(errMsg, 'error');
   } finally {
     if (btnSubmit) {
       btnSubmit.disabled = false;
@@ -490,7 +586,10 @@ export async function handleSignIn(e) {
 }
 
 export async function handleSignUp(e) {
-  if (e) e.preventDefault();
+  if (e) {
+    e.preventDefault();
+    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+  }
   const nameInput = document.getElementById('regName');
   const salonInput = document.getElementById('regSalonName');
   const phoneInput = document.getElementById('regPhone');
@@ -500,6 +599,10 @@ export async function handleSignUp(e) {
   const emailInput = document.getElementById('regEmail');
   const passInput = document.getElementById('regPassword');
   const btnSubmit = document.getElementById('btnSubmitRegister');
+  const errorAlert = document.getElementById('registerErrorAlert');
+  const errorText = document.getElementById('registerErrorAlertText');
+
+  if (errorAlert) errorAlert.style.display = 'none';
 
   const name = nameInput ? nameInput.value.trim() : '';
   const salon_name = salonInput ? salonInput.value.trim() : 'HairStudio';
@@ -511,15 +614,35 @@ export async function handleSignUp(e) {
   const password = passInput ? passInput.value.trim() : '';
 
   if (!name || !email || !password || !slug) {
-    showToast('Заполните обязательные поля (*)', 'error');
+    const msg = 'Заполните обязательные поля (*)';
+    if (errorAlert && errorText) {
+      errorText.innerText = msg;
+      errorAlert.style.display = 'flex';
+    }
+    showToast(msg, 'error');
     return;
   }
   if (password.length < 6) {
-    showToast('Пароль должен быть не менее 6 символов', 'error');
+    const msg = 'Пароль должен быть не менее 6 символов';
+    if (errorAlert && errorText) {
+      errorText.innerText = msg;
+      errorAlert.style.display = 'flex';
+    }
+    if (passInput) {
+      passInput.classList.add('input-error');
+      passInput.focus();
+    }
+    showToast(msg, 'error');
     return;
   }
   if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
-    showToast('Адрес ссылки должен содержать только буквы, цифры и дефис', 'error');
+    const msg = 'Адрес ссылки должен содержать только буквы, цифры и дефис';
+    if (errorAlert && errorText) {
+      errorText.innerText = msg;
+      errorAlert.style.display = 'flex';
+    }
+    if (slugInput) slugInput.focus();
+    showToast(msg, 'error');
     return;
   }
 
@@ -541,7 +664,12 @@ export async function handleSignUp(e) {
     });
 
     if (!res.ok) {
-      showToast(res.error || 'Ошибка регистрации', 'error');
+      const errMsg = res.error || 'Ошибка регистрации';
+      if (errorAlert && errorText) {
+        errorText.innerText = errMsg;
+        errorAlert.style.display = 'flex';
+      }
+      showToast(errMsg, 'error');
       return;
     }
 
@@ -566,11 +694,155 @@ export async function handleSignUp(e) {
 
     triggerAutoSyncSlots();
   } catch (err) {
-    showToast(`Ошибка регистрации: ${err.message}`, 'error');
+    const errMsg = `Ошибка регистрации: ${err.message || 'Сбой подключения'}`;
+    if (errorAlert && errorText) {
+      errorText.innerText = errMsg;
+      errorAlert.style.display = 'flex';
+    }
+    showToast(errMsg, 'error');
   } finally {
     if (btnSubmit) {
       btnSubmit.disabled = false;
       btnSubmit.innerText = 'Зарегистрироваться и создать кабинет';
+    }
+  }
+}
+
+export async function handleResetPassword(e) {
+  if (e) {
+    e.preventDefault();
+    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+  }
+
+  const emailInput = document.getElementById('resetEmail');
+  const btnSubmit = document.getElementById('btnSubmitReset');
+  const errorAlert = document.getElementById('resetErrorAlert');
+  const errorText = document.getElementById('resetErrorAlertText');
+  const successAlert = document.getElementById('resetSuccessAlert');
+  const successText = document.getElementById('resetSuccessAlertText');
+
+  if (errorAlert) errorAlert.style.display = 'none';
+  if (successAlert) successAlert.style.display = 'none';
+  if (emailInput) {
+    emailInput.classList.remove('input-error');
+    emailInput.style.borderColor = '';
+  }
+
+  const email = emailInput ? emailInput.value.trim() : '';
+  if (!email) {
+    const msg = 'Пожалуйста, введите Email для восстановления пароля';
+    if (errorAlert && errorText) {
+      errorText.innerText = msg;
+      errorAlert.style.display = 'flex';
+    }
+    if (emailInput) {
+      emailInput.classList.add('input-error');
+      emailInput.focus();
+    }
+    showToast(msg, 'error');
+    return;
+  }
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Отправка ссылки...';
+  }
+
+  try {
+    const res = await window.HairSupabase.resetMasterPassword(email);
+    if (!res.ok) {
+      const errMsg = res.error || 'Не удалось отправить ссылку для сброса';
+      if (errorAlert && errorText) {
+        errorText.innerText = errMsg;
+        errorAlert.style.display = 'flex';
+      }
+      showToast(errMsg, 'error');
+      return;
+    }
+
+    if (successAlert && successText) {
+      successText.innerText = res.message || `Ссылка для сброса отправлена на ${email}. Проверьте почту!`;
+      successAlert.style.display = 'flex';
+    }
+    showToast(`✉️ Ссылка для сброса отправлена на ${email}!`, 'success');
+  } catch (err) {
+    const errMsg = `Ошибка: ${err.message || 'Сбой запроса'}`;
+    if (errorAlert && errorText) {
+      errorText.innerText = errMsg;
+      errorAlert.style.display = 'flex';
+    }
+    showToast(errMsg, 'error');
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = '✉️ Отправить ссылку для сброса';
+    }
+  }
+}
+
+export async function handleUpdatePassword(e) {
+  if (e) {
+    e.preventDefault();
+    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+  }
+
+  const passInput = document.getElementById('inputNewPassword');
+  const btnSubmit = document.getElementById('btnSubmitNewPassword');
+  const errorAlert = document.getElementById('newPasswordErrorAlert');
+  const errorText = document.getElementById('newPasswordErrorAlertText');
+
+  if (errorAlert) errorAlert.style.display = 'none';
+  if (passInput) {
+    passInput.classList.remove('input-error');
+    passInput.style.borderColor = '';
+  }
+
+  const newPass = passInput ? passInput.value.trim() : '';
+  if (!newPass || newPass.length < 6) {
+    const msg = 'Пароль должен содержать минимум 6 символов';
+    if (errorAlert && errorText) {
+      errorText.innerText = msg;
+      errorAlert.style.display = 'flex';
+    }
+    if (passInput) {
+      passInput.classList.add('input-error');
+      passInput.focus();
+    }
+    showToast(msg, 'error');
+    return;
+  }
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerText = 'Сохранение пароля...';
+  }
+
+  try {
+    const res = await window.HairSupabase.updateMasterPassword(newPass);
+    if (!res.ok) {
+      const errMsg = res.error || 'Ошибка сохранения пароля';
+      if (errorAlert && errorText) {
+        errorText.innerText = errMsg;
+        errorAlert.style.display = 'flex';
+      }
+      showToast(errMsg, 'error');
+      return;
+    }
+
+    showToast('🎉 Пароль успешно обновлён! Вход в кабинет выполнен.', 'success');
+    closeModal('modalAuth');
+    await initMasterAuth();
+  } catch (err) {
+    const errMsg = `Ошибка: ${err.message || 'Сбой обновления пароля'}`;
+    if (errorAlert && errorText) {
+      errorText.innerText = errMsg;
+      errorAlert.style.display = 'flex';
+    }
+    showToast(errMsg, 'error');
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerText = '💾 Сохранить новый пароль и войти';
     }
   }
 }
@@ -580,8 +852,13 @@ export async function handleSignOut() {
   if (!confirmed) return;
 
   if (window.HairSupabase) {
-    await window.HairSupabase.signOutMaster();
+    try {
+      await window.HairSupabase.signOutMaster();
+    } catch (e) {}
   }
+
+  safeStorage.set('hairstudio_master_local_profile', '');
+  try { localStorage.removeItem('hairstudio_master_local_profile'); } catch (e) {}
 
   state.authSession = null;
   state.currentUser = null;
@@ -592,6 +869,89 @@ export async function handleSignOut() {
   closeModal('modalSettings');
   showToast('Вы вышли из аккаунта');
 }
+
+export async function handleCreateTestMaster() {
+  const btn = document.getElementById('btnQuickTestMaster');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Создание мастера...';
+  }
+
+  try {
+    const testMaster = {
+      id: 'master_test_' + Date.now().toString(36),
+      user_id: 'usr_test_' + Date.now().toString(36),
+      name: 'Руслан Мастер',
+      salon_name: 'HairStudio VIP',
+      phone: '+7 (701) 777-88-99',
+      city: 'Алматы',
+      address: 'пр. Абая 150, салон 5',
+      slug: 'ruslan_vip',
+      email: 'master_test@hairstudio.kz',
+      subscription_status: 'trial',
+      trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      subscription_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      work_start_hour: 9,
+      work_end_hour: 21,
+      slot_step_min: 30,
+      is_active: true
+    };
+
+    state.currentMaster = testMaster;
+    state.currentUser = { id: testMaster.user_id, email: testMaster.email };
+    state.authSession = { access_token: 'local_test_token', user: state.currentUser };
+
+    safeStorage.set('hairstudio_master_slug', testMaster.slug);
+    safeStorage.set('hairstudio_studio_name', testMaster.salon_name);
+    safeStorage.set('hairstudio_master_address', testMaster.address);
+    safeStorage.set('hairstudio_master_city', testMaster.city);
+    safeStorage.set('hairstudio_master_phone', testMaster.phone);
+    safeStorage.set('hairstudio_master_local_profile', JSON.stringify(testMaster));
+
+    loadStudioName();
+    updateAuthUI(true);
+
+    // Make sure we have services and sample appointments loaded
+    const services = await window.db.getServices();
+    if (!services || services.length === 0) {
+      await window.db.loadSeedData();
+    }
+    await reloadData();
+
+    closeModal('modalAuth');
+    showToast(`🎉 Тестовый мастер "${testMaster.name}" успешно активирован!`, 'success');
+  } catch (err) {
+    console.warn('Create test master error:', err);
+    showToast('Ошибка при создании тестового мастера', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = '🧪 Создать / Войти как тестовый мастер';
+    }
+  }
+}
+
+export function handleFillTestMasterForm() {
+  const rand = Math.floor(100 + Math.random() * 900);
+  const inputs = {
+    regName: 'Руслан Тестовый',
+    regSalonName: 'HairStudio VIP',
+    regPhone: '+7 (701) 777-88-99',
+    regCity: 'Алматы',
+    regAddress: 'пр. Абая 150',
+    regSlug: `master_${rand}`,
+    regEmail: `master_${rand}@hairstudio.kz`,
+    regPassword: 'password123'
+  };
+
+  Object.entries(inputs).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+
+  showToast('Форма заполнена тестовыми данными');
+}
+
 
 // ================= ONLINE BOOKING SETTINGS & LINK =================
 export function getMasterBookingUrl(slug) {
@@ -1856,35 +2216,85 @@ function setupEventListeners() {
   const inputMasterSlug = document.getElementById('settingMasterSlug');
   if (inputMasterSlug) inputMasterSlug.addEventListener('input', updateBookingLinkDisplay);
 
-  const btnAuthCopyLink = document.getElementById('btnAuthCopyLink');
+  const btnAuthCopyLink = document.getElementById('btnAuthCopyBookingLink') || document.getElementById('btnAuthCopyLink');
   if (btnAuthCopyLink) btnAuthCopyLink.addEventListener('click', handleCopyBookingLink);
 
-  const btnAuthOpenLink = document.getElementById('btnAuthOpenLink');
+  const btnAuthOpenLink = document.getElementById('btnAuthOpenBookingLink') || document.getElementById('btnAuthOpenLink');
   if (btnAuthOpenLink) btnAuthOpenLink.addEventListener('click', handleOpenBookingLink);
+
+  // Quick Test Master actions
+  const btnQuickTest = document.getElementById('btnQuickTestMaster');
+  if (btnQuickTest) btnQuickTest.addEventListener('click', handleCreateTestMaster);
+
+  const btnFillTest = document.getElementById('btnFillTestMasterForm');
+  if (btnFillTest) btnFillTest.addEventListener('click', handleFillTestMasterForm);
 
   // Auth Modal Tabs & Forms
   const btnAuthTabLogin = document.getElementById('btnAuthTabLogin');
   const btnAuthTabRegister = document.getElementById('btnAuthTabRegister');
   const formAuthLogin = document.getElementById('formAuthLogin');
   const formAuthRegister = document.getElementById('formAuthRegister');
+  const formAuthReset = document.getElementById('formAuthReset');
+  const formAuthNewPassword = document.getElementById('formAuthNewPassword');
+  const btnForgotPass = document.getElementById('btnForgotPass');
+  const btnBackToLogin = document.getElementById('btnBackToLogin');
+  const authModeToggle = document.getElementById('authModeToggle');
+  const authFastTestBox = document.getElementById('authFastTestBox');
+  const authModalTitle = document.getElementById('authModalTitle');
 
-  if (btnAuthTabLogin && btnAuthTabRegister) {
-    btnAuthTabLogin.addEventListener('click', () => {
-      btnAuthTabLogin.classList.add('active');
-      btnAuthTabRegister.classList.remove('active');
-      if (formAuthLogin) formAuthLogin.style.display = 'flex';
-      if (formAuthRegister) formAuthRegister.style.display = 'none';
-    });
-    btnAuthTabRegister.addEventListener('click', () => {
-      btnAuthTabRegister.classList.add('active');
-      btnAuthTabLogin.classList.remove('active');
-      if (formAuthLogin) formAuthLogin.style.display = 'none';
-      if (formAuthRegister) formAuthRegister.style.display = 'flex';
-    });
-  }
+  const showLoginForm = () => {
+    if (btnAuthTabLogin) btnAuthTabLogin.classList.add('active');
+    if (btnAuthTabRegister) btnAuthTabRegister.classList.remove('active');
+    if (formAuthLogin) formAuthLogin.style.display = 'flex';
+    if (formAuthRegister) formAuthRegister.style.display = 'none';
+    if (formAuthReset) formAuthReset.style.display = 'none';
+    if (formAuthNewPassword) formAuthNewPassword.style.display = 'none';
+    if (authModeToggle) authModeToggle.style.display = 'grid';
+    if (authFastTestBox) authFastTestBox.style.display = 'block';
+    if (authModalTitle) authModalTitle.innerText = '👤 Кабинет мастера';
+  };
+
+  const showRegisterForm = () => {
+    if (btnAuthTabRegister) btnAuthTabRegister.classList.add('active');
+    if (btnAuthTabLogin) btnAuthTabLogin.classList.remove('active');
+    if (formAuthLogin) formAuthLogin.style.display = 'none';
+    if (formAuthRegister) formAuthRegister.style.display = 'flex';
+    if (formAuthReset) formAuthReset.style.display = 'none';
+    if (formAuthNewPassword) formAuthNewPassword.style.display = 'none';
+    if (authModeToggle) authModeToggle.style.display = 'grid';
+    if (authFastTestBox) authFastTestBox.style.display = 'block';
+    if (authModalTitle) authModalTitle.innerText = '✨ Регистрация мастера';
+  };
+
+  const showResetPasswordForm = () => {
+    if (formAuthLogin) formAuthLogin.style.display = 'none';
+    if (formAuthRegister) formAuthRegister.style.display = 'none';
+    if (formAuthNewPassword) formAuthNewPassword.style.display = 'none';
+    if (authModeToggle) authModeToggle.style.display = 'none';
+    if (authFastTestBox) authFastTestBox.style.display = 'none';
+    if (formAuthReset) formAuthReset.style.display = 'flex';
+    if (authModalTitle) authModalTitle.innerText = '🔑 Сброс пароля';
+
+    const loginEmail = document.getElementById('loginEmail');
+    const resetEmail = document.getElementById('resetEmail');
+    if (loginEmail && resetEmail && loginEmail.value.trim() && !resetEmail.value.trim()) {
+      resetEmail.value = loginEmail.value.trim();
+    }
+    const resetErr = document.getElementById('resetErrorAlert');
+    const resetSucc = document.getElementById('resetSuccessAlert');
+    if (resetErr) resetErr.style.display = 'none';
+    if (resetSucc) resetSucc.style.display = 'none';
+  };
+
+  if (btnAuthTabLogin) btnAuthTabLogin.addEventListener('click', showLoginForm);
+  if (btnAuthTabRegister) btnAuthTabRegister.addEventListener('click', showRegisterForm);
+  if (btnForgotPass) btnForgotPass.addEventListener('click', showResetPasswordForm);
+  if (btnBackToLogin) btnBackToLogin.addEventListener('click', showLoginForm);
 
   if (formAuthLogin) formAuthLogin.addEventListener('submit', handleSignIn);
   if (formAuthRegister) formAuthRegister.addEventListener('submit', handleSignUp);
+  if (formAuthReset) formAuthReset.addEventListener('submit', handleResetPassword);
+  if (formAuthNewPassword) formAuthNewPassword.addEventListener('submit', handleUpdatePassword);
 
   const btnAuthLogout = document.getElementById('btnAuthLogout');
   if (btnAuthLogout) btnAuthLogout.addEventListener('click', handleSignOut);
@@ -1982,12 +2392,34 @@ function initApp() {
 window.app = {
   state,
   reloadData,
+  openModal,
+  closeModal,
   openAppointmentModal,
   openServiceModal,
   openExpenseModal,
   openClientDetailsModal,
-  openKaspiPayModal
+  openKaspiPayModal,
+  handleCreateTestMaster,
+  handleFillTestMasterForm,
+  handleSignIn,
+  handleSignUp,
+  handleResetPassword,
+  handleUpdatePassword,
+  showRecoveryNewPasswordForm
 };
+
+window.openAppointmentModal = openAppointmentModal;
+window.openServiceModal = openServiceModal;
+window.openExpenseModal = openExpenseModal;
+window.openClientDetailsModal = openClientDetailsModal;
+window.openKaspiPayModal = openKaspiPayModal;
+window.handleCreateTestMaster = handleCreateTestMaster;
+window.handleFillTestMasterForm = handleFillTestMasterForm;
+window.handleSignIn = handleSignIn;
+window.handleSignUp = handleSignUp;
+window.handleResetPassword = handleResetPassword;
+window.handleUpdatePassword = handleUpdatePassword;
+window.showRecoveryNewPasswordForm = showRecoveryNewPasswordForm;
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);

@@ -217,10 +217,15 @@ export function playBookingNotificationSound() {
   } catch (e) {}
 }
 
+export const playChime = playBookingNotificationSound;
+
 // Make critical helpers globally accessible on window for compatibility with existing inline callers
 if (typeof window !== 'undefined') {
   window.escapeHtml = escapeHtml;
   window.showToast = showToast;
   window.formatCurrency = formatCurrency;
   window.safeStorage = safeStorage;
+  window.playChime = playBookingNotificationSound;
+  window.playBookingNotificationSound = playBookingNotificationSound;
 }
+

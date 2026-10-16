@@ -57,24 +57,35 @@ export function updateSubscriptionBadge(master) {
   }
 }
 
+export const renderSubscriptionStatus = updateSubscriptionBadge;
+
+export function checkSubscriptionExpired(master) {
+  const calc = calculateSubscription(master);
+  return calc.isExpired;
+}
+
+export function openKaspiPayModal() {
+  const calc = calculateSubscription(state.currentMaster);
+  const statusEl = document.getElementById('subModalCurrentStatusText');
+  const expiresEl = document.getElementById('subModalExpiresAtText');
+
+  if (statusEl) {
+    statusEl.innerText = calc.isLifetime ? '👑 Бессрочный VIP' : (calc.status === 'active' ? '🟢 Подписка активна' : (calc.status === 'expired' ? '🔴 Подписка истекла' : '🟡 Пробный период'));
+  }
+  if (expiresEl) {
+    expiresEl.innerText = calc.isLifetime ? 'Действует бессрочно' : (calc.endsAt ? `Действует до: ${calc.endsAt.toLocaleDateString('ru-RU')}` : 'Действует 14 дней');
+  }
+
+  if (window.openModal) {
+    window.openModal('modalSubscription');
+  }
+}
+
 export function setupSubscriptionModalListeners() {
   const btnOpenSub = document.getElementById('btnOpenSubscriptionModal');
   if (btnOpenSub) {
     btnOpenSub.addEventListener('click', () => {
-      const calc = calculateSubscription(state.currentMaster);
-      const statusEl = document.getElementById('subModalCurrentStatusText');
-      const expiresEl = document.getElementById('subModalExpiresAtText');
-
-      if (statusEl) {
-        statusEl.innerText = calc.isLifetime ? '👑 Бессрочный VIP' : (calc.status === 'active' ? '🟢 Подписка активна' : (calc.status === 'expired' ? '🔴 Подписка истекла' : '🟡 Пробный период'));
-      }
-      if (expiresEl) {
-        expiresEl.innerText = calc.isLifetime ? 'Действует бессрочно' : (calc.endsAt ? `Действует до: ${calc.endsAt.toLocaleDateString('ru-RU')}` : 'Действует 14 дней');
-      }
-
-      if (window.openModal) {
-        window.openModal('modalSubscription');
-      }
+      openKaspiPayModal();
     });
   }
 
@@ -116,3 +127,5 @@ export function setupSubscriptionModalListeners() {
     });
   }
 }
+
+export const initSubscriptionListeners = setupSubscriptionModalListeners;

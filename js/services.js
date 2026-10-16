@@ -27,10 +27,26 @@ export function renderServices() {
     return;
   }
 
+  if (!container._hasItemClickListener) {
+    container._hasItemClickListener = true;
+    container.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.btn-edit-service');
+      const card = e.target.closest('.data-item-card');
+      if (editBtn || card) {
+        const id = editBtn ? editBtn.dataset.id : card.querySelector('.btn-edit-service')?.dataset.id;
+        if (id) {
+          const s = state.services.find(item => String(item.id) === String(id));
+          if (s) openServiceModal(s);
+        }
+      }
+    });
+  }
+
   const fragment = document.createDocumentFragment();
   list.forEach(s => {
     const card = document.createElement('div');
     card.className = 'data-item-card';
+    card.style.cursor = 'pointer';
     card.innerHTML = `
       <div class="item-left">
         <div class="item-title">${escapeHtml(s.name)}</div>

@@ -21,7 +21,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=30">
+  <link rel="stylesheet" href="css/style.css?v=33">
 
   <!-- Immediate Modal Controller (Guarantees instant modal response on phones before heavy JS loads) -->
   <script>
@@ -31,7 +31,7 @@
         document.querySelectorAll('.modal-backdrop.active').forEach(function(el) {
           if (el.id !== id) {
             el.classList.remove('active');
-            el.style.display = '';
+            el.style.display = 'none';
             el.style.opacity = '';
           }
         });
@@ -47,6 +47,10 @@
         if (id === 'modalSettings') {
           if (typeof loadOnlineBookingSettings === 'function') try { loadOnlineBookingSettings(); } catch(e){}
           if (typeof updateAutoBackupUI === 'function') try { updateAutoBackupUI(); } catch(e){}
+        } else if (id === 'modalAuth') {
+          if (window.state && window.state.currentMaster && typeof renderSubscriptionStatus === 'function') {
+            try { renderSubscriptionStatus(window.state.currentMaster); } catch(e){}
+          }
         }
       }
     };
@@ -54,7 +58,7 @@
       var m = document.getElementById(id);
       if (m) {
         m.classList.remove('active');
-        m.style.display = '';
+        m.style.display = 'none';
         m.style.opacity = '';
         m.style.pointerEvents = '';
         var s = m.querySelector('.modal-sheet');
@@ -64,6 +68,18 @@
         }
       }
     };
+    // Immediate early click listener: guarantees [data-close] and backdrop clicks ALWAYS close modals
+    document.addEventListener('click', function(e) {
+      var closeBtn = e.target.closest ? e.target.closest('[data-close]') : null;
+      if (closeBtn) {
+        var modalId = closeBtn.getAttribute('data-close');
+        if (window.closeModal) window.closeModal(modalId);
+        return;
+      }
+      if (e.target.classList && e.target.classList.contains('modal-backdrop')) {
+        if (window.closeModal) window.closeModal(e.target.id);
+      }
+    });
   </script>
 </head>
 <body>
@@ -328,7 +344,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 id="modalAppointmentTitle" class="modal-title">Новая запись</h3>
-        <button class="modal-close" data-close="modalAppointment">✕</button>
+        <button class="modal-close" data-close="modalAppointment" onclick="window.closeModal('modalAppointment')">✕</button>
       </div>
       <form id="formAppointment" class="modal-body">
         <input type="hidden" id="appId">
@@ -457,7 +473,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 id="modalServiceTitle" class="modal-title">Новая услуга</h3>
-        <button class="modal-close" data-close="modalService">✕</button>
+        <button class="modal-close" data-close="modalService" onclick="window.closeModal('modalService')">✕</button>
       </div>
       <form id="formService" class="modal-body">
         <input type="hidden" id="serviceId">
@@ -503,7 +519,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 id="modalExpenseTitle" class="modal-title">Новая закупка материалов</h3>
-        <button class="modal-close" data-close="modalExpense">✕</button>
+        <button class="modal-close" data-close="modalExpense" onclick="window.closeModal('modalExpense')">✕</button>
       </div>
       <form id="formExpense" class="modal-body">
         <input type="hidden" id="expenseId">
@@ -559,7 +575,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 id="clientDetailsName" class="modal-title">Карточка клиента</h3>
-        <button class="modal-close" data-close="modalClientDetails">✕</button>
+        <button class="modal-close" data-close="modalClientDetails" onclick="window.closeModal('modalClientDetails')">✕</button>
       </div>
       <div class="modal-body">
         <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-input); padding: 12px; border-radius: var(--radius-md);">
@@ -596,7 +612,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 class="modal-title" id="authModalTitle">👤 Кабинет мастера</h3>
-        <button class="modal-close" data-close="modalAuth">✕</button>
+        <button class="modal-close" data-close="modalAuth" onclick="window.closeModal('modalAuth')">✕</button>
       </div>
       <div class="modal-body">
         <!-- Logged-in Master Profile View -->
@@ -657,6 +673,15 @@
 
         <!-- Unauthenticated View (Login / Register) -->
         <div id="authUnauthenticatedBox">
+          <!-- Fast Test Master Activation -->
+          <div id="authFastTestBox" style="background: rgba(245, 158, 11, 0.12); border: 1px dashed var(--accent-gold); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px; text-align: center;">
+            <div style="font-size: 13px; font-weight: 700; color: var(--accent-gold-light); margin-bottom: 4px;">🧪 Тестирование кабинета мастера</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">Создать профиль тестового мастера в 1 клик с готовыми услугами, расписанием и клиентами:</div>
+            <button type="button" id="btnQuickTestMaster" class="btn-primary" style="width: 100%; padding: 10px; font-weight: 700; font-size: 13px; background: linear-gradient(135deg, #f59e0b, #d97706); border: none; border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              ⚡ Создать / Войти как тестовый мастер
+            </button>
+          </div>
+
           <!-- Auth Tabs Toggle -->
           <div class="client-mode-toggle" id="authModeToggle" style="margin-bottom: 16px;">
             <button type="button" class="chip-btn active" id="btnAuthTabLogin">
@@ -668,22 +693,42 @@
           </div>
 
           <!-- Form 1: Login -->
-          <form id="formAuthLogin" style="display: flex; flex-direction: column; gap: 12px;">
+          <form id="formAuthLogin" onsubmit="event.preventDefault(); window.handleSignIn(event); return false;" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- In-Form Alert for Login Errors -->
+            <div id="loginErrorAlert" class="auth-error-alert" style="display: none;">
+              <span style="font-size: 16px; line-height: 1;">⚠️</span>
+              <span id="loginErrorAlertText" style="flex: 1;">Неверный email или пароль</span>
+            </div>
+
             <div class="form-group">
               <label class="form-label" for="loginEmail">Email мастера *</label>
               <input type="email" id="loginEmail" class="form-input" placeholder="master@example.com" required autocomplete="email">
             </div>
             <div class="form-group">
-              <label class="form-label" for="loginPassword">Пароль *</label>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label class="form-label" for="loginPassword" style="margin-bottom: 0;">Пароль *</label>
+                <button type="button" id="btnForgotPass" style="background: none; border: none; color: var(--accent-gold-light); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;">
+                  Забыли пароль?
+                </button>
+              </div>
               <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" required autocomplete="current-password">
             </div>
-            <button type="submit" id="btnSubmitLogin" class="btn-primary" style="margin-top: 6px;">
+            <button type="submit" id="btnSubmitLogin" class="btn-primary" style="margin-top: 4px;">
               Войти в аккаунт
             </button>
           </form>
 
           <!-- Form 2: Register -->
-          <form id="formAuthRegister" style="display: none; flex-direction: column; gap: 12px;">
+          <form id="formAuthRegister" onsubmit="event.preventDefault(); window.handleSignUp(event); return false;" style="display: none; flex-direction: column; gap: 12px;">
+            <!-- In-Form Alert for Register Errors -->
+            <div id="registerErrorAlert" class="auth-error-alert" style="display: none;">
+              <span style="font-size: 16px; line-height: 1;">⚠️</span>
+              <span id="registerErrorAlertText" style="flex: 1;">Ошибка регистрации</span>
+            </div>
+
+            <button type="button" id="btnFillTestMasterForm" class="btn-secondary" style="width: 100%; padding: 8px; font-size: 12px; margin-bottom: 4px;">
+              ⚡ Заполнить тестовыми данными
+            </button>
             <div class="form-group">
               <label class="form-label" for="regName">Имя мастера *</label>
               <input type="text" id="regName" class="form-input" placeholder="Например: Руслан" required>
@@ -727,6 +772,59 @@
             </button>
           </form>
 
+          <!-- Form 3: Password Reset (Забыли пароль) -->
+          <form id="formAuthReset" onsubmit="event.preventDefault(); window.handleResetPassword(event); return false;" style="display: none; flex-direction: column; gap: 12px;">
+            <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12px; color: var(--text-muted); line-height: 1.45;">
+              🔑 Введите email мастера, указанный при регистрации. Мы отправим ссылку для быстрого сброса и создания нового пароля.
+            </div>
+
+            <!-- In-Form Alert for Reset Errors -->
+            <div id="resetErrorAlert" class="auth-error-alert" style="display: none;">
+              <span style="font-size: 16px; line-height: 1;">⚠️</span>
+              <span id="resetErrorAlertText" style="flex: 1;">Ошибка сброса</span>
+            </div>
+
+            <!-- In-Form Alert for Reset Success -->
+            <div id="resetSuccessAlert" class="auth-success-alert" style="display: none;">
+              <span style="font-size: 18px; line-height: 1;">✉️</span>
+              <span id="resetSuccessAlertText" style="flex: 1;">Ссылка отправлена! Проверьте входящие письма.</span>
+            </div>
+
+            <div class="form-group" id="resetEmailGroup">
+              <label class="form-label" for="resetEmail">Email мастера *</label>
+              <input type="email" id="resetEmail" class="form-input" placeholder="master@example.com" required autocomplete="email">
+            </div>
+
+            <button type="submit" id="btnSubmitReset" class="btn-primary" style="margin-top: 4px;">
+              ✉️ Отправить ссылку для сброса
+            </button>
+
+            <button type="button" id="btnBackToLogin" class="btn-secondary" style="width: 100%; padding: 9px; font-size: 13px;">
+              ← Вернуться ко входу
+            </button>
+          </form>
+
+          <!-- Form 4: Set New Password (после перехода по ссылке из письма) -->
+          <form id="formAuthNewPassword" onsubmit="event.preventDefault(); window.handleUpdatePassword(event); return false;" style="display: none; flex-direction: column; gap: 12px;">
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12px; color: #6ee7b7; line-height: 1.45;">
+              🔐 Вы перешли по ссылке восстановления. Задайте новый надёжный пароль для вашего кабинета мастера:
+            </div>
+
+            <div id="newPasswordErrorAlert" class="auth-error-alert" style="display: none;">
+              <span style="font-size: 16px; line-height: 1;">⚠️</span>
+              <span id="newPasswordErrorAlertText" style="flex: 1;">Ошибка обновления пароля</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="inputNewPassword">Новый пароль (минимум 6 символов) *</label>
+              <input type="password" id="inputNewPassword" class="form-input" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+            </div>
+
+            <button type="submit" id="btnSubmitNewPassword" class="btn-primary" style="margin-top: 4px;">
+              💾 Сохранить новый пароль и войти
+            </button>
+          </form>
+
           <div style="text-align: center; margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 12px;">
             <button type="button" id="btnContinueAsGuest" style="background: none; border: none; color: var(--text-muted); font-size: 12px; cursor: pointer; text-decoration: underline;">
               Продолжить в Демо-режиме (без входа)
@@ -743,7 +841,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 class="modal-title">⭐ Подписка HairStudio</h3>
-        <button class="modal-close" data-close="modalSubscription">✕</button>
+        <button class="modal-close" data-close="modalSubscription" onclick="window.closeModal('modalSubscription')">✕</button>
       </div>
       <div class="modal-body">
         <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
@@ -824,7 +922,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 class="modal-title">🔔 Входящие онлайн-заявки</h3>
-        <button class="modal-close" data-close="modalBookings">✕</button>
+        <button class="modal-close" data-close="modalBookings" onclick="window.closeModal('modalBookings')">✕</button>
       </div>
       <div class="modal-body">
         <div id="bookingsListSummary" style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -844,7 +942,7 @@
       <div class="modal-handle"></div>
       <div class="modal-header">
         <h3 class="modal-title">Настройки и Резервные копии</h3>
-        <button class="modal-close" data-close="modalSettings">✕</button>
+        <button class="modal-close" data-close="modalSettings" onclick="window.closeModal('modalSettings')">✕</button>
       </div>
       <div class="modal-body">
         <!-- Account Status Card -->
@@ -1012,8 +1110,8 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/supabase-sync.js?v=30"></script>
-  <script src="js/db.js?v=30"></script>
-  <script type="module" src="js/app.js?v=30"></script>
+  <script src="js/supabase-sync.js?v=33"></script>
+  <script src="js/db.js?v=33"></script>
+  <script type="module" src="js/app.js?v=33"></script>
 </body>
 </html>

@@ -49,6 +49,31 @@ export function renderClients(searchQuery = '') {
     }
   }
 
+  if (!container._hasClientClickListener) {
+    container._hasClientClickListener = true;
+    container.addEventListener('click', (e) => {
+      if (e.target.closest('a')) return;
+      const viewBtn = e.target.closest('.btn-view-client');
+      const card = e.target.closest('.data-item-card');
+      if (viewBtn || card) {
+        const clientId = viewBtn ? viewBtn.dataset.clientId : card.querySelector('.btn-view-client')?.dataset.clientId;
+        if (clientId) {
+          const client = state.clients.find(c => String(c.id) === String(clientId));
+          if (client) {
+            const clientApps = state.appointments.filter(a =>
+              (a.clientPhone && client.phone && a.clientPhone === client.phone) ||
+              (a.clientName && client.name && a.clientName.toLowerCase() === client.name.toLowerCase())
+            );
+            openClientDetailsModal(client, clientApps, (app) => {
+              if (window.closeModal) window.closeModal('modalClientDetails');
+              if (window.app && window.app.openAppointmentModal) window.app.openAppointmentModal(app);
+            });
+          }
+        }
+      }
+    });
+  }
+
   const fragment = document.createDocumentFragment();
 
   list.forEach(c => {
@@ -75,6 +100,7 @@ export function renderClients(searchQuery = '') {
 
     const card = document.createElement('div');
     card.className = 'data-item-card';
+    card.style.cursor = 'pointer';
     card.innerHTML = `
       <div class="item-left">
         <div class="item-title">${escapeHtml(c.name)}</div>
@@ -99,6 +125,7 @@ export function renderClients(searchQuery = '') {
 
   container.appendChild(fragment);
 }
+
 
 export function openClientDetailsModal(client, clientApps, onOpenAppointment) {
   state.viewingClientId = client.id;
